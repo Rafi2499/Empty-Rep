@@ -1,0 +1,405 @@
++------------------------------------------------------------------------------------------------------------------------+
+|                                        TABLE OF CONTENTS & INDEX : ANSIBLE                                             |
++------------------------------------------------------------------------------------------------------------------------+
+| 1. ARCHITECTURE & CONCEPTS (THE PUSH MODEL)                                                                            |
+|    * Ansible                  # ⚙️ [Agentless Engine]   Configuration management & IaC tool via push model[cite: 1]   |
+|    * Control Node             # 🖥️ [Command Center]     Runs Ansible playbooks and pushes tasks via SSH[cite: 1]      |
+|    * Managed Node             # 💻 [Target Worker]      Receives temporary Python code; zero permanent agent[cite: 1]  |
+|    * Fact Discovery           # 🔍 [Setup Engine]       Gathers system facts automatically (`ansible_facts`)[cite: 1]  |
++------------------------------------------------------------------------------------------------------------------------+
+| 2. SETUP & WORKFLOW (THE P-U-S-H SYSTEM)                                                                               |
+|    * STEP 1: PREP             # 📦 [Package Setup]      Install EPEL repository, Ansible, and Python[cite: 1]         |
+|    * STEP 2: USER             # 👤 [Power Delegation]   Create 'ansible' user and grant passwordless sudo[cite: 1]    |
+|    * STEP 3: SSH              # 🔑 [Key Exchange]       Configure sshd_config, generate keys, and distribute[cite: 1] |
+|    * STEP 4: HOSTS            # 📋 [Address Book]       Configure inventory file (`/etc/ansible/hosts`)[cite: 1]      |
+|    * STEP 5: PUSH             # 🚀 [Execution Test]     Push test file and verify connectivity across nodes[cite: 1]  |
++------------------------------------------------------------------------------------------------------------------------+
+| 3. PATTERNS, MODULES & AD-HOC OPERATIONS                                                                             |
+|    * List-Hosts Patterns      # 🌐 [Target Slicing]     Filter targets using ranges, indices, and groups[cite: 1]     |
+|    * Privilege Escalation     # 🔑 [Boss Mode (-b)]     Escalate execution privileges to root/sudo (`become`)[cite: 1]|
+|    * Idempotency              # 🔄 [Declarative Check]  Ensures repeated runs produce identical safe outcomes[cite: 1]  |
+|    * Package/Service Modules  # 📦 [System State]       Manage packages, files, services, and users[cite: 1]          |
++------------------------------------------------------------------------------------------------------------------------+
+| 4. ROLES, PLAYBOOKS & VAULT                                                                                            |
+|    * Ansible Roles            # 📁 [Modular Directory]  Structured components (`tasks`, `handlers`, `vars`)[cite: 1]  |
+|    * Playbook Syntax          # 📜 [Automation Map]     YAML files following the HUBS-VT structural format[cite: 1]   |
+|    * Dry Run & Check          # 🧪 [Safety Test]        Validate syntax (`--syntax-check`) or simulate[cite: 1]       |
+|    * Ansible Vault            # 🔐 [Secret Guard]       Encrypt sensitive files and variables using AES-256[cite: 1]  |
++------------------------------------------------------------------------------------------------------------------------+
+
+What is Ansible --------->
+Ansible is an open-source configuration management, application deployment, and infrastructure automation tool used extensively in DevOps and IT operations. Like Chef, it treats infrastructure setup as software code (Infrastructure as Code - IaC)
+However, unlike Chef, Ansible is "agentless" —meaning you don't need to install any background software ("Chef Client") on target machines. It connects directly over standard protocol channels like SSH (for Linux/Unix) or WinRM/PowerShell (for Windows)
+
++-----------------------+                         +--------------+
+|     Control Node      | ------ SSH / WinRM ---> |    Node 1    |
+| (Ansible + Playbooks) |                         +--------------+
++-----------------------+                         
+            |                                     
+       SSH / WinRM                                
+            |                                     
+            v                                     
+     +--------------+                             
+     |    Node 2    |
+     +--------------+
+------------------------------------------------------------------------------------------
+
+Chef = Agent-Based (Pull Model)
+[ Chef Server ]  <=== (Pull) === [ Node (with Chef Client Agent installed) ]
+Node's installed software constantly "PULLS" work from server. Client app running 24/7 + continuous CPU/RAM usage on node."App installed on target"
+
+Ansible = Agentless (Push Model)
+[ Control Node (Ansible) ]  == SSH / WinRM (Push) ===>  [ Node 1 (No Agent required) ]
+Server "PUSHES" temporary Python code to node over SSH, runs it, then deletes it. Standard SSH connection + Python on node (Zero software to install).
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+                    CHEF OHAI VS ANSIBLE SETUP (FACT DISCOVERY) both do the same work ---------->
+
+1. ARCHITECTURAL COMPARISON DIAGRAM :
+   CHEF ARCHITECTURE (Agent-Based)
+   [ 🖥️ Chef Server ] ◄─── REST API ─── [ 💻 Node (chef-client) ]
+                                                │
+                                        [ 🔍 Ohai Engine ]
+                                        (Gathers local system facts)
+
+   ANSIBLE ARCHITECTURE (Agentless)
+   [ 🖥️ Control Server ] ─── SSH ───► [ 💻 Managed Node ]
+             │                                   │
+      (-m setup) ───────────────────────► [ 🔍 setup Module ]
+                                        (Gathers local system facts)
+
+2. SIDE-BY-SIDE FEATURE BREAKDOWN 
+
+   FEATURE                 CHEF (OHAI)                       ANSIBLE (SETUP)
+   ─────────────────────── ───────────────────────────────   ───────────────────────────────
+   Execution Model         Runs client-side via chef-client   Pushed dynamically via SSH
+   Client Software         Requires chef-client package       Zero client install (Python only)
+   Data Format             JSON / Ruby Hash                   JSON (ansible_facts)
+   Invocation              Automatic at start of run          Automatic at start of Playbook
+   Ad-Hoc Inspection       ohai                               ansible node -m setup
+   
+──────────────────────────────────────────────────────────────────────────────────────────
+
+@End-to-end setup and verification process for your 3-instance 
+Ansible environment example, combined into single continuous workflow with your P-U-S-H 
+
+🧠 How to Remember the Setup Flow (The "P-U-S-H" System)
+[ P ] PREP      --->  Install Packages (EPEL, Ansible, Python)
+[ U ] USER      --->  Create User + Give Visudo (NOPASSWD)
+[ S ] SSH       --->  Enable SSH PasswordAuth + Generate & Copy SSH-Key
+[ H ] HOSTS     --->  Add Node IPs in Inventory (/etc/ansible/hosts) & Run Ping
+
+Complete Ansible Lab Workflow --->
+========================================================================================================
+                                      ANSIBLE 3-INSTANCE SETUP FLOW
+========================================================================================================
+
+       [ STEP 1: PREP ]                  [ STEP 2: USER ]                  [ STEP 3: SSH ]
+  Install EPEL & Ansible            Create 'ansible' User &           SSHD Config, Keygen &
+  (Server Only)                     Grant Passwordless Sudo           Trust (All Instances)
+         │                                   │                                  │
+         ▼                                   ▼                                  ▼
+┌──────────────────┐               ┌──────────────────┐               ┌──────────────────┐
+│ yum install      │               │ adduser ansible  │               │ sshd_config      │
+│ epel-release     │  ───────────► │ passwd ansible   │  ───────────► │ ssh-keygen       │
+│ yum install      │               │ visudo           │               │ ssh-copy-id      │
+│ ansible python   │               │ (NOPASSWD: ALL)  │               │ (Key Exchange)   │
+└──────────────────┘               └──────────────────┘               └──────────────────┘
+                                                                               │
+                                                                               ▼
+       [ STEP 5: TEST & VERIFY ]                                 [ STEP 4: HOSTS ]
+  Create & Push File to Nodes                               Configure Inventory File
+  (Ad-hoc / Playbook Execution)                             & Test Ping Connectivity
+         ▲                                                                     │
+         │                                                                     │
+         └─────────────────────────────────────────────────────────────────────┘
+
+STEP 1: PREP (Run ONLY on Server Instance 🖥️)
+Get the Tool" → yum install epel-release then yum install ansible.
+yum install epel-release -y                                                      📦 Install EPEL repo
+yum update -y                                                                     🔄 Update packages
+yum install ansible python python-devel git openssl -y                           🛠️ Install Ansible + dependencies
+ansible --version                                                                🔍 Verify installation
+
+STEP 2: USER & SUDO RIGHTS (Run on ALL 3 Instances 🖥️ 💻 💻)
+👤 "Give Power" → adduser ansible → visudo (ansible ALL=(ALL) NOPASSWD: ALL).
+adduser ansible                                                                  ➕ Create ansible user
+passwd ansible                                                                   🔒 Set password
+visudo                                                                           🔑 Edit sudoers file
+  # Add inside visudo or uncomment:
+  root ALL=(ALL) ALL | ansible ALL=(ALL) NOPASSWD: ALL                           📝 Grant passwordless sudo
+su - ansible                                                                     🔄 Switch to ansible user
+whoami                                                                           🔍 Verify user is ansible
+
+STEP 3: SSH CONFIGURATION & TRUST (Run on ALL 3 Instances 🖥️ 💻 💻)
+🔑 "Unlock Door & Hand Key" → sshd_config (PasswordAuth yes) → ssh-keygen → ssh-copy-id.
+vi /etc/ssh/sshd_config                                                          🔓 Open SSH config file
+  # Set: PermitRootLogin yes                                                     🔑 Allow root login by uncomment
+  # Set: PasswordAuthentication yes                                              🔑 Enable password login by uncomment
+  manually comment '#' in #passwordAuthentication no    ->(for system not to read this)
+systemctl restart sshd                                                           🔄 Restart SSH service
+🎯 [NEXT COMMANDS: Run ONLY on Server 🖥️ as 'ansible' user]
+ssh-keygen                                                                       🗝️ Generate SSH key pair
+ssh-copy-id ansible@<NODE_1_PRIVATE_IP>                                         📤 Copy key to Node 1
+ssh-copy-id ansible@<NODE_2_PRIVATE_IP>                                         📤 Copy key to Node 2
+ssh ansible@<NODE_1_PRIVATE_IP>                                                 🔍 Test SSH trust
+exit                                                                             🔙 Return to server
+
+STEP 4: HOSTS & INVENTORY SETUP (Run ONLY on Server 🖥️ as 'ansible' user)
+📋 "Address Book" → Add node IPs to inventory, set config defaults, test ping.
+vi /etc/ansible/hosts                                                            📝 Edit inventory file
+  # Add: [groupname]                                                             🏷️ Define group name
+  # Add: <NODE_1_PRIVATE_IP>                                                     📍 Add Node 1 IP
+  # Add: <NODE_2_PRIVATE_IP>                                                     📍 Add Node 2 IP
+vi /etc/ansible/ansible.cfg                                                      ⚙️ Edit Ansible config
+  # Set: inventory = /etc/ansible/hosts                                          📂 Point to hosts file
+  # Set: remote_user = ansible                                                   👤 Set default remote user
+ansible all -m ping                                                              ⚡ Test connectivity to nodes
+
+STEP 5: PUSH TEST FILE & VERIFY (Run ONLY on Server 🖥️ as 'ansible' user)
+🚀"Push Work" → Copy file via Ansible, then verify contents remotely or locally.
+ansible all -m copy -a "content='Hello!\n' dest=/tmp/ansible_test.txt"           📤 Push file to all nodes
+ansible all -a "cat /tmp/ansible_test.txt"                                       🔍 Check file remotely
+ssh ansible@<NODE_1_PRIVATE_IP>                                                  💻 Login to Node 1
+cat /tmp/ansible_test.txt                                                        📄 Verify file content
+exit                                                                             🔙 Return to server
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+          ANSIBLE LIST-HOSTS PATTERNS (--list-hosts)
+----------------------------------------------------------------------------------
+ansible all --list-hosts                                🌐 List ALL HOSTS in inventory(Show all instances connected to server)
+ansible groupname --list-hosts                          🏷️ List all hosts inside 'groupname' like devops grp, cloud grp (need node PRIVATE IP)
+ansible 'groupname[0]' --list-hosts                     1️⃣ List first host in 'groupname', INDEX TARGETING (SINGLE HOSTS)
+ansible 'groupname[1:4]' --list-hosts                   🔢 List hosts 2nd through 5th (indices 1 to 4), SLICE TARGETING (RANGE IN SINGLE GROUP)
+ansible 'groupname1[2:3]:groupname2[1:3]' --list-hosts  🔀 List combined slices from both groups, COMBINED SLICES ACROSS MULTIPLE GROUPS
+
+          ANSIBLE AD-HOC COMMANDS, MODULES, IDEMPOTENCY & SETUP
+----------------------------------------------------------------------------------
+🧠 MEMORY MAP & SYMBOLS CHEAT SHEET:
+  ⚡ [Ad-Hoc]    = One-liner execution (Quick fix, no playbook needed) -> without writing a full YAML playbook.
+  🔑 [-b]        = Become / Privilege Escalation (Think: "b" = Be root / Boss mode)
+  ⚠️ [Raw (-a)]   = Imperative / Non-idempotent (Appends/runs every time) or it can say as argument (-a)
+  🔄 [Module]    = Declarative / Idempotent (Checks current state first)
+  🔍 [setup/ohai]= Fact discovery (System introspection or system inspection) 
+  🔌 [Agentless] = Works via standard SSH + Python (No persistent client needed)
+
+ansible groupname -a "CMD"                                  📂 Run basic Linux shell command like ls, pwd, touch filename etc.,
+ansible groupname -ba "yum install httpd -y"                ✅ Works: '-b' escalates 'ansible' user to root/sudo | sudo and (-b / --become) are same
+ansible groupname -b -m yum -a "name=httpd state=present"   ✅ Best Practice: Use yum module with -b
+
+PACKAGE MANAGEMENT MODULE
+--------------------------------
+# Modules (-m) perform work idempotently. They ship built-in with Ansible and require ZERO persistent agents on managed nodes.
+
+ansible group -m ping                                  # Test connectivity
+ansible group -m setup                                 🔍 Gather all system facts (IPs, memory, OS, disks)
+`-m ping`        | `-m service` | `-m setup`       | `-m user`
+`-m yum`         | `-m group`   | `-m apt`         | `-m command`
+`-m package`     | `-m shell`   | `-m copy`        | `-m script`
+`-m file`        | `-m reboot`  | `-m template`    | `-m uri`
+`-m lineinfile`  | `-m get_url` | `-m blockinfile` | `-m unarchive`
+
+🧠 CORE RULE: Use -m [module] -a "[key=value]"------->
+ansible groupname -b -m yum -a "name=httpd state=present"                  📦 Install, update, delete (state=present | state=latest | state=absent)
+
+ansible group -m <WorkCMD>                                📁 FILES & COPIES (Create, Copy, Delete)
+  1. copy -a "src=a.txt dest=/tmp/a.txt" | 2. file -a "path=/tmp/dir state=directory" | 3. file -a "path=/tmp/a.txt state=absent"
+
+ansible group -b -m service -a "name=httpd state=started enabled=yes" # Start & enable    ⚙️ SERVICES/Start
+
+ansible group -b -m user -a "name=john state=present"  #👤 Creating USERS
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+WHAT IS IDEMPOTENCY?
+-----------------------------------------------------------------------------------
+# Idempotency means: Running a command 1 time or 100 times produces the exact 
+# SAME final result on the node without causing unwanted duplicate changes.
+
+# RAW COMMANDS ARE NOT IDEMPOTENT (Imperative):
+ansible groupname -a "echo 'hello' >> /tmp/test.txt"              ⚠️ Appends 'hello' every single time you run it!
+
+# ANSIBLE MODULES ARE IDEMPOTENT (Declarative):
+ansible groupname -b -m yum -a "name=httpd state=present"         🔄 Checks first: Installs if missing; changes NOTHING if already present.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+ANSIBLE ROLES & DIRECTORY STRUCTURE
+-----------------------------------------------------------------------------------
+# Roles organize playbooks into reusable directory structures.
+# Instead of one large playbook file, roles split tasks, handlers, vars, and templates.
+
+MASTER PLAYBOOK TO ROLE WORKFLOW-->
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ playbookname/                                                                   │
+│                                                                                 │
+│  ┌───────────────────────────────┐          ┌────────────────────────────────┐  │
+│  │ ⚙️ master/                    │          │ 📁 role/                      │  │
+│  │ ───────────────────────────── │          │ ────────────────────────────── │  │
+│  │ • ansible.cfg (Global config) │          │ └── apache/                    │  │
+│  │ • inventory   (Host IPs)      │ ───────► │     ├── defaults/ (Fallback)   │  │
+│  │ • site.yml    (Master entry)  │  Calls   │     ├── files/    (Static)     │  │
+│  │                               │  Role    │     ├── handlers/ (Restarts)   │  │
+│  │   roles:                      │          │     ├── meta/     (Info/deps)  │  │
+│  │     - role: ../role/apache    │          │     ├── tasks/    (Core steps) │  │
+│  └───────────────────────────────┘          │     ├── templates/(Dynamic .j2)│  │
+│                                             │     └── vars/     (Role vars)  │  │
+│                                             └────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+$ tree playbookname/
+playbookname/
+|
+├── master/             # ⚙️ MASTER DIRECTORY
+│   ├── ansible.cfg     # 🛠️ Main Ansible configuration file
+│   ├── inventory       # 🌐 Hosts inventory file
+│   └── site.yml        # 🎯 Master playbook (calls the role)
+|
+└── role/               # 📁 ROLE DIRECTORY
+    └── apache/         # 📦 Role name
+        ├── defaults/   # ⚙️ Low-priority default variables
+        │   └── main.yml
+        ├── files/      # 📄 Static files to copy  **"Copy-Paste Storage Box"*-> server to target nodes
+        ├── handlers/   # 🔔 Notified service actions (restarts)
+        │   └── main.yml
+        ├── meta/       # ℹ️ Role metadata & dependencies
+        │   └── main.yml
+        ├── tasks/      # 📋 Main task execution steps
+        │   └── main.yml
+        ├── templates/  # 📄 Dynamic Jinja2 template files (.j2)
+        ├── tests/      # 🧪 Test playbooks and test inventory
+        └── vars/       # 📦 High-priority role variables
+            └── main.yml
+
+Command: ansible-galaxy role init rolename --->
+🧠 Creates the standard 8-directory <Ansible role> folder structure instantly.
+
+COMPLETE BREAKDOWN OF ALL ROLE DIRECTORIES & FILES
+-----------------------------------------------------------------------------------
+When you run `ansible-galaxy role init apache`, it creates 8 folders. 
+Inside almost every folder is a `main.yml` file. Here is what EACH ONE does:
+
+📁 FOLDER & FILE EXPLANATION
+
+1. ⚙️ defaults/main.yml  ---> DEFAULT VARIABLES (Lowest Priority)
+   # Contains default values for variables. 
+   # Easily overridden by playbooks, inventory, or extra vars (-e).
+   EXAMPLE (defaults/main.yml):
+     http_port: 80
+     max_clients: 200
+
+2. 📦 vars/main.yml      ---> ROLE VARIABLES (High Priority)
+   # Contains internal variables specific to this role.
+   # Harder to override than defaults/main.yml.
+   EXAMPLE (vars/main.yml):
+     pkgname: httpd
+     service_name: httpd
+
+3. 📋 tasks/main.yml     ---> MAIN EXECUTION TASKS
+   # The heart of the role. Contains the step-by-step tasks to run.
+   EXAMPLE (tasks/main.yml):
+     - name: install web server
+       yum: name="{{ pkgname }}" state=present
+       notify: restart web server
+
+4. 🔔 handlers/main.yml  ---> NOTIFIED ACTIONS
+   # Tasks triggered by 'notify' in tasks/main.yml (e.g. restarts).
+   EXAMPLE (handlers/main.yml):
+     - name: restart web server
+       service: name="{{ pkgname }}" state=restarted
+
+5. ℹ️ meta/main.yml      ---> ROLE METADATA & DEPENDENCIES
+   # Author info, license, supported OS, and role dependencies.
+   EXAMPLE (meta/main.yml):
+     galaxy_info:
+       author: your_name
+       license: MIT
+     dependencies:
+       - role: firewall                          # Runs 'firewall' role FIRST
+
+6. 📄 templates/         ---> DYNAMIC JINJA2 FILES (.j2)
+   # Configuration file templates with variables inside ({{ var }}).
+   # Used with the 'template' module (e.g. index.html.j2 or httpd.conf.j2).
+
+7. 📁 files/             ---> STATIC FILES
+   # Regular files copied directly without modification.
+   # Used with the 'copy' module (e.g. static script.sh or picture.png).
+
+8. 🧪 tests/             ---> ROLE TESTING
+   # Contains inventory and test.yml playbook to test the role independently.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+ANSIBLE PLAYBOOKS & VARIABLES SYNTAX Checking
+-----------------------------------------------------------------------------------
+📱 SMS MEMORY TRICK (H-U-B-S-V-T) / HUBS VT
+  H ➔ hosts:          Target group name
+  U ➔ remote_user:    SSH login user
+  B ➔ become:         Privilege escalation (yes/no)
+  S ➔ connection:     ssh connection
+  V ➔ vars:           Variable dictionary
+  T ➔ tasks:          Task list section
+  T ➔ task details:   Name + Module key/values
+
+# Playbooks automate tasks using YAML files (.yml).
+# Standard layout: Hosts -> Remote User/User -> Become -> Connection -> Vars -> Tasks.
+
+🧠 CORE RULE: Playbook Structure & Formatting ------->
+- hosts: groupname                                    🎯 Target server group
+  remote_user or user: ansible                        👤 SSH connection user (NOT "users")
+  become: yes                                         🔑 Run with sudo privileges
+  connection: ssh                                     ✅ Use 'ssh'to connect
+# gather_facts: yes (only use to fetch ip details)
+  vars:                                               📦 Define variables here like [key=value]
+    pkgname: httpd                                    
+  tasks:                                              📋 List of tasks (plural, NO dash "-")
+    - name: this is to install httpd                  🏷️ Description of the task
+      action: yum name="{{pkgname}}" state=installed/present          --><---- if used : space needed | = no need of space
+
+#Notify, Handlers, Loops & Conditions ------->
+
+      notify: after install start the service         🔔 Trigger handler if task changes state
+
+  handlers:                                           ⚙️ Secondary tasks (runs at play end)
+    - name: after install start the service           🏷️ MUST MATCH notify string exactly!
+      action: service name="{{pkgname}}" state=restarted        🔄 Common states: started, restarted, reloaded
+
+  #loops
+      action: service name="{{item}}" state=present       💬 Refers to current item in loop
+      with_items:                                         🔁 Loop list (modern standard)
+          - user1
+          - user2
+
+  #Conditions
+      Command: yum install httpd -y
+      when: ansible_os_family == "RedHat"                 ❓ Condition (RHEL,CentOS etc) --> family name should be correct as per there company
+
+                (OR (tasks section))
+
+    - name: this is to install httpd
+      yum:                                            ⚙️ Module used
+        name: "{{ pkgname }}"                         💬 Must wrap quotes around variables
+        state: present                                ✅ Use 'present' (NOT 'installed/present')
+
+-----------------------------------------------------------------------------------
+DRY RUN & SYNTAX CHECK
+-----------------------------------------------------------------------------------
+ansible-playbook file.yml --syntax-check             🔍 Check playbook for syntax errors
+ansible-playbook file.yml --check                    🧪 Dry-run execution without making changes
+ansible-playbook file.yml                            ------> execution cmd
+──────────────────────────────────────────────────────────────────────────────────────────
+
+ANSIBLE VAULT COMMAND CHEAT SHEET
+-------------------------------------------------
+# Ansible Vault encrypts sensitive data like passwords, API keys, and secret variables.
+# Uses AES-256 encryption on playbook files or variable files.
+
+🧠 CORE RULE: Vault Operations Command Structure ------->
+ansible-vault create file.yml                        🔐 Create a NEW encrypted file
+ansible-vault encrypt file.yml                       🔒 Encrypt an EXISTING unencrypted file
+ansible-vault decrypt file.yml                       🔓 Decrypt an encrypted file back to plain text
+ansible-vault view file.yml                          👁️ View content of encrypted file WITHOUT decrypting
+ansible-vault edit file.yml                          ✏️ Edit an encrypted file directly in default editor
+ansible-vault rekey file.yml                         🔑 Change vault password of a  n encrypted file.

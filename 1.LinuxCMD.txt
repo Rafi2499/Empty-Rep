@@ -1,0 +1,232 @@
++------------------------------------------------------------------------------------------------------------------------+
+|                                        TABLE OF CONTENTS & INDEX : LINUX UTILS                                         |
++------------------------------------------------------------------------------------------------------------------------+
+| 1. LINUX SYSTEM ADMINISTRATION UTILS                                                                                   |
+|    * Directory Structure      # 📂 [Core Layout]        Hierarchy of binaries, configs, and temp paths[cite: 6]       |
+|    * Navigation & File Mgmt   # 🧭 [Command Toolkit]    Essential navigation, creation, editing, and search[cite: 6]  |
+|    * Permissions & Ownership  # 🔐 [Access Control]     Managing modes (`chmod`) and user ownership[cite: 6]          |
+|    * Links (Soft vs Hard)     # 🔗 [Pointer Types]      Symbolic shortcut signposts vs. direct Inodes[cite: 6]        |
+|    * Archives & Compression   # 🗜️ [Bundle & Squeeze]   Archiving via `tar` and compression via `gzip`[cite: 6]       |
++------------------------------------------------------------------------------------------------------------------------+
+
+=== 📁 LINUX DIRECTORY STRUCTURE ===
+
+1. ⚙️ CORE SYSTEM & BOOT
+/boot                                       ▶️ Files needed to boot the OS (Kernel, GRUB)
+/bin                                        🛠️ Essential command tools for ALL users (ls, cp, bash)
+/sbin                                       🔒 Essential administrative commands for ROOT (fdisk, reboot)
+/lib                                        📚 Essential shared libraries for /bin and /sbin
+/lib64                                      📚 64-bit essential shared libraries
+2. 👤 USERS & CONFIGURATION
+/etc                                        ⚙️ System-wide configuration files & service settings
+/home                                       🏠 Personal home directories for regular users
+/root                                       👑 Personal home directory for the root user
+3. 🔌 STORAGE & EXTENSIONS
+/media                                      💽 Automatic mount points for removable media (USB, CD)
+/mnt                                        🔌 Temporary manual mount points for drives/shares
+/opt                                        📦 Standalone third-party software packages (Chrome, Zoom)
+/srv                                        🌐 Data served by system services (Web, FTP)
+4. ⚡ LIVE RUNTIME & HARDWARE
+/proc                                       📊 Virtual dynamic info on processes & CPU/RAM status
+/sys                                        🖥️ Virtual dynamic info on system hardware & drivers
+/run                                        ⏱️ Temporary runtime data active since last boot
+5. 📑 TEMP, LOGS & APPLICATIONS
+/tmp                                        🗑️ Temporary scratchpad files (cleared on reboot)
+/var                                        📈 Variable data that changes continuously (logs, spools)
+/usr                                        📦 Secondary hierarchy for user apps & utilities (/usr/bin)
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Command                                 Think
+------------------------------------------------------------------------------------------
+ls                                      👀 See files in current folder
+pwd                                     📍 Show current folder path
+cd <folder>                             🚶 Go inside folder
+mkdir <folder>                          📁 Make new folder
+touch <file>                            📄 Make new empty file
+cp <file> <new_file>                    📋 Copy file
+mv <file> <new_path>                    📦 Move or rename file
+rm <file>                               🗑️ Delete file
+cat <file>                              👁️ Read whole file content
+head <file>                             🔝 See top 10 lines
+tail <file>                             🔚 See bottom 10 lines
+nano <file>                             ✏️ Edit file simply
+grep "<word>" <file>                    🔍 Find word inside file
+chmod +x <file>                         🔓 Make script runnable
+chown <user> <file>                     👤 Change file owner
+sudo <command>                          👑 Run command as admin
+ps aux                                  📊 List running programs
+kill <PID>                              🛑 Stop a program
+df -h                                   💾 Check free disk space
+ping <ip>                               🌐 Test internet connection
+ssh <user>@<ip>                         🔑 Connect to remote server
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Command                                 Think / What it does
+----------------------------------------------------------------------------------------------------
+ls / pwd / cd                           🧭 Navigate & locate:
+                                        • ls  -> List files and folders in your current directory.
+                                        • pwd -> Show the exact full path of where you are right now.
+                                        • cd  -> Change directory to move into a different folder.
+
+mkdir / touch                           📁 Create folder / file:
+                                        • mkdir -> Create a brand new directory (folder).
+                                        • touch -> Create a new empty file or update an existing file's timestamp.
+
+cp / mv / rm                            ✂️ Copy, move & delete:
+                                        • cp -> Copy files or folders from one place to another.
+                                        • mv -> Move files/folders OR rename them.
+                                        • rm -> Delete (remove) files or directories permanently.
+
+cat / head / tail                       👁️ Read file content:
+                                        • cat  -> Output and display the full contents of a file on the screen.
+                                        • head -> View only the first few lines of a file.
+                                        • tail -> View the last few lines of a file (useful for checking log files).
+
+nano / vim                              ✏️ Edit file:
+                                        • nano -> Open a simple, user-friendly text editor in the terminal.
+                                        • vim  -> Open an advanced terminal text editor with modal keyboard controls.
+
+grep / find                             🔍 Search text or files:
+                                        • grep -> Search for specific words or text patterns inside files.
+                                        • find -> Search the file system to locate files or folders by name/type.
+
+chmod / chown                           🔐 Change access & owner:
+                                        • chmod -> Change read, write, and execute permissions of a file/folder.
+                                        • chown -> Change the owner user or group assigned to a file/folder.
+
+sudo                                    👑 Run as admin:
+                                        • Execute any command with elevated root/administrator privileges.
+
+top / ps                                📊 Monitor processes:
+                                        • top -> Display a live, updating view of system resources (CPU/RAM) and active tasks.
+                                        • ps  -> Take a quick static snapshot of currently running processes.
+
+kill                                    🛑 Stop process:
+                                        • Send a termination signal to shut down a running process by its Process ID (PID).
+
+df / du                                 💾 Check disk space:
+                                        • df -> Display total available and used disk space across mounted filesystems.
+                                        • du -> Measure how much disk space a specific file or folder is consuming.
+
+ping / curl                             🌐 Test network & fetch:
+                                        • ping -> Send ICMP packets to test if a remote server/IP is reachable.
+                                        • curl -> Download files or transfer data to/from a URL directly via terminal.
+
+ssh                                     🔑 Remote login:
+                                        • Connect securely to a remote Linux machine over the network.
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Command / Concept                       Think & Practical Example
+----------------------------------------------------------------------------------------------------
+chmod (Change Mode)                     🔐 Modify FILE PERMISSIONS (Who can Read, Write, or Execute):
+
+                                        • Think: "What actions can people perform on this file?"
+                                        • Permissions are split into 3 groups: Owner | Group | Others
+                                        • Permissions use numbers: Read = 4, Write = 2, Execute = 1
+
+                                        EXAMPLES:
+                                        
+                                        1. Make a script executable:
+                                           chmod +x deploy.sh
+                                           -> Adds execute (x) permission so you can run ./deploy.sh
+                                        
+                                        2. Give full access to owner, read/execute to others:
+                                           chmod 755 app.py
+                                           -> Owner gets 7 (4+2+1 = Read, Write, Execute)
+                                           -> Group gets 5 (4+0+1 = Read, Execute)
+                                           -> Others get 5 (4+0+1 = Read, Execute)
+
+                                        3. Restrict private SSH key file (Owner read/write only):
+                                           chmod 600 AcerKey.pem
+                                           -> Owner gets 6 (4+2 = Read, Write)
+                                           -> Group and Others get 0 (No access at all)
+
+----------------------------------------------------------------------------------------------------
+chown (Change Owner)                    👤 Modify FILE OWNERSHIP (Who owns the file or directory):
+
+                                        • Think: "Which user and group own this file?"
+                                        • Format: chown USER:GROUP filename
+
+                                        EXAMPLES:
+
+                                        1. Change file owner to ec2-user:
+                                           chown ec2-user server.log
+                                           -> User 'ec2-user' is now the primary owner of server.log
+
+                                        2. Change both user and group owner:
+                                           chown ec2-user:webdev app.py
+                                           -> User 'ec2-user' and group 'webdev' now own app.py
+
+                                        3. Change owner recursively for a whole folder:
+                                           chown -R ec2-user:chef /home/ec2-user/chef-repo
+                                           -> Changes ownership of chef-repo AND everything inside it
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────────────────────────────
+# === 📦 ARCHIVE(tar) vs COMPRESSION(gzip) AT A GLANCE ===
+ARCHIVE (tar)                               📁 Bundling many files into 1 file (No size reduction)
+COMPRESSION (gzip)                          🗜️ Shrinking file size using math algorithms (1 file only)
+COMBINED (tar.gz)                           🚀 Bundling many files AND shrinking them into 1 small file
+[ Multiple Files & Folders ] 
+          │
+          ▼  step 1: tar (Bundle into 1 file)
+   [ archive.tar ] (100 MB)
+          │
+          ▼  step 2: gzip (Compress the bundle)
+ [ archive.tar.gz ] (20 MB) 🌟
+tar  ➔ "TIE" (Ties many files together into one bundle)
+gzip ➔ "SQUEEZE" (Squeezes a file to make it small)
+
+# === 📦 TAR ARCHIVE COMMANDS (Tape Archive) ===
+tar -cvf archive.tar /path/to/dir            📦 Create uncompressed .tar archive from folder
+tar -xvf archive.tar                         📂 Extract files from uncompressed .tar archive
+tar -tvf archive.tar                         🔍 View contents of .tar archive without extracting
+
+# === 🗜️ GZIP COMPRESSION COMMANDS ===
+gzip file.txt                                🗜️ Compress file.txt into file.txt.gz (deletes original)
+gzip -d file.txt.gz                          📂 Decompress file.txt.gz back to file.txt
+gzip -k file.txt                             🔒 Compress file.txt while Keeping original file
+
+# === 🚀 COMBINED TAR + GZIP (.tar.gz / .tgz) ===
+tar -czvf archive.tar.gz /path/to/dir        📦 Create compressed .tar.gz archive from folder
+tar -xzvf archive.tar.gz                     📂 Extract compressed .tar.gz archive to current folder
+tar -tzvf archive.tar.gz                     🔍 View contents of .tar.gz archive without extracting
+
+-c ➔ Create      (Make a new archive)
+-x ➔ eXtract     (Unpack an archive)
+-t ➔ Test/List   (Look inside without extracting)
+-z ➔ GZip        (Filter archive through gzip compression)
+-v ➔ Verbose     (Show progress and file names on screen)
+-f ➔ File        (Specify the file name to work with)
+──────────────────────────────────────────────────────────────────────────────────────────
+# === 🔗 SOFT LINK (Symlink / Shortcut) ===
+ln -s /path/to/original.txt softlink.txt   🔗 Create a symbolic shortcut pointing to original file
+ls -l softlink.txt                          🔍 View link destination (shows: softlink.txt -> original.txt)
+rm original.txt                             💥 Delete target file ➔ softlink breaks (points to nothing)
+
+# === 🧱 HARD LINK (Direct Mirror / Inode Pointer) ===
+ln /path/to/original.txt hardlink.txt       🧱 Create a direct file mirror sharing the exact same data
+ls -i original.txt hardlink.txt             🔍 Check Inode numbers ➔ both files share identical Inode ID
+rm original.txt                             🛡️ Delete target file ➔ hardlink still keeps full data intact
+
+# === 💥 DELETING ORIGINAL FILE: SOFT vs HARD LINK ===
+ls softlink.txt                             ❌ Soft Link BROKEN (points to a path that no longer exists)
+cat hardlink.txt                            ✅ Hard Link STILL WORKS (file data remains fully intact)
+🧠 How It Actually Works (The Clear Story)
+🔗 1. Soft Link (Shortcut Link)
+Think of a Soft Link as a signpost pointing to a house address.
+If you delete the original file, you demolish the house. <----
+The signpost (softlink.txt) is still standing, but it points to an empty plot of land.
+Result: The shortcut breaks and stops working completely.
+
+🧱 2. Hard Link (Twin Key to the Same Room)
+A Hard Link is NOT a copy—it is a second key that unlocks the exact same room on disk.
+Both original.txt and hardlink.txt point directly to the raw file data on your hard drive.
+If you edit hardlink.txt, original.txt updates instantly (and vice versa) because they share the exact same live content.<----
+If you mistakenly delete original.txt, you only threw away one key.<----
+Result: The room (your data) stays perfectly safe, and hardlink.txt continues to access it without losing a single character.
+──────────────────────────────────────────────────────────────────────────────────────────

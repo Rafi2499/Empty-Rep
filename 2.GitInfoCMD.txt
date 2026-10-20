@@ -1,0 +1,201 @@
++------------------------------------------------------------------------------------------------------------------------+
+|                                        TABLE OF CONTENTS & INDEX : GIT                                                 |
++------------------------------------------------------------------------------------------------------------------------+
+| 1. GIT CORE WORKFLOW & ARCHITECTURE                                                                                    |
+|    * Git Architecture         # 🔄 [State Flow]         Working Dir ➔ Staging Area ➔ Local Repo ➔ Remote[cite: 4]       |
+|    * See & Create             # 👀 [Tracking & Setup]   Status, logs, initialization, and cloning repos[cite: 4]        |
+|    * Stage & Commit           # 📦 [Snapshot Save]      Preparing modifications and recording history[cite: 4]        |
+|    * Share & Sync             # 📤 [Remote Ops]         Pushing, pulling, fetching, and remote tracking[cite: 4]      |
+|    * Stash, Branch & Merge    # 🌿 [Parallel Paths]     Temporary drawers, branching, and conflict merges[cite: 4]    |
+|    * Undo & Clean             # ↩️ [Rollback Tools]     Restoring files, reverting commits, and purging[cite: 4]      |
++------------------------------------------------------------------------------------------------------------------------+
+
+🧠 Git ---> In One Sentence: Git tracks every change you make to your files so you never lose work and can safely undo mistakes.
+🐙 Complete Git Lifecycle Cheat Sheet
+
+🔄 Git Core Workflow Architecture
+[ Working Directory ] ──▶ git add ──▶ [ Staging Area ] ──▶ git commit ──▶ [ Local Repository ] ──▶ git push ──▶ [ GitHub / Remote ]
+                                                                                                ▲
+                                                                                                │ git pull
+                                                                                                │
+                                                                                 [ Remote Repository ]
+                                                                                 
+------------------------------------------------------------------------------------------
+
+                    GIT
+                     │
+       ┌─────────────┼─────────────┐
+       ↓             ↓             ↓
+      SEE          CHANGE        SHARE
+       │             │             │
+   status          add           push
+   log             commit        pull
+   diff            restore
+                   stash
+                   branch
+                   merge
+
+# === 👀 1. SEE (Status, History & Differences) ===
+git status                                  👀 Show current state of working directory & staging area
+git log                                     📜 Display commit history log
+git log --oneline                           🔍 Display compact commit history (one line per commit)
+git diff                                    🆚 Show unstaged changes between working directory & staging
+git diff --staged                           🔎 Show staged changes ready to be committed
+
+# === 🏗️ 2. CREATE & SETUP ===
+git init                                    🚀 Initialize a brand-new local Git repository
+git clone <url>                             📥 Copy an existing remote repository to local machine
+git remote add origin <url>                 🔗 Connect local repository to GitHub/Remote server
+git remote -v                               🌐 List connected remote repository URLs
+git remote set-url origin <url>             ✏️ Update/Change remote repository URL
+
+# === 📦 3. PREPARE & SAVE (Staging & Commits) ===
+git add file.txt                            📦 Stage a single specific file for commit
+git add .                                   📦 Stage ALL modified and new files
+git commit -m "commit message"              📸 Save staged snapshot with a descriptive message
+git commit -am "commit message"             ⚡ Stage tracked files AND commit in a single step
+
+# === 📤 4. SHARE & SYNC (Remote Operations) ===
+git push                                    ⬆️ Send local commits to remote GitHub repository
+git push origin <branch>                    📤 Send local branch commits to specific remote branch
+git push -u origin <branch>                 ⚓ Send commits and set default tracking branch
+git pull                                    ⬇️ Fetch AND merge remote changes into current branch
+git fetch                                   📡 Download remote updates without merging them
+
+# === 🗄️ 5. STASH (Temporary Storage) ===
+git stash                                   🙈 Hide uncommitted changes into a safe temporary drawer
+git stash list                              📋 View list of all stashed change snapshots
+git stash apply                             📥 Restore stashed changes WITHOUT deleting from stash
+git stash pop                               📤 Restore stashed changes AND remove from stash drawer
+git stash drop                              🗑️ Permanently delete the most recent stash entry
+
+# === 🌿 6. BRANCH & MERGE ===
+git branch                                  🌿 List all local branches (highlights active branch)
+git branch <branch_name>                    🌱 Create a new branch
+git switch <branch_name>                    🔀 Switch/Move to an existing branch
+git switch -c <branch_name>                 ⚡ Create a new branch AND switch to it immediately
+
+git merge <branch_name>                     🔀 Combine target branch into current active branch
+Remember: merge = combine branches
+Imagine:
+main ───────────────●────●
+                     \
+feature ─────────────●────●
+                           \
+                            merge
+                             ↓
+main ───────────────●────●──●
+
+git branch -d <branch_name>                 🗑️ Delete a merged branch safely
+git branch -D <branch_name>                 💥 Force-delete an unmerged branch
+
+# === ↩️ 7. UNDO & RESTORE ===
+git restore file.txt                        ↩️ Discard local changes in working file (reset to HEAD)
+git restore --staged file.txt               📤 Unstage file (move back from Staging to Working dir)
+git revert <commit_hash>                    🛡️ Create a new commit that safely reverses a past commit
+git reset --soft HEAD~1                     ⏪ Undo last commit but KEEP changes staged
+git reset --hard HEAD~1                     💥 Undo last commit AND ERASE all changes (CAUTION)
+
+# === 🧹 8. CLEAN (Untracked Files) ===
+git clean -n                                🔍 Dry run: Preview untracked files that will be deleted
+git clean -f                                🧹 Force delete untracked files
+git clean -nd                               🔍 Dry run: Preview untracked files AND directories
+git clean -fd                               💥 Force delete untracked files AND directories
+
+------------------------------------------------------------------------------------------
+
+🧠 Flag Breakdowns & Memory Tricks
+1. Top 5 Core Commands
+ADD ➔ COMMIT ➔ PUSH ➔ PULL ➔ STASH
+Prepare ➔ Record ➔ Send ➔ Receive ➔ Hide
+
+2. Difference Between init vs clone
+git init = Start fresh here 🏁 (Creates a .git folder in an empty directory).
+
+git clone = Bring existing repo here 📥 (Copies an existing repository from GitHub).
+
+3. Understanding git clean Flags
+-n = No action / Preview 🔍 (Dry run to see what would be deleted).
+
+-f = Force 💥 (Actually delete the untracked files).
+
+-d = Directories 📁 (Include untracked folders/directories).
+
+4. Branching Flags (git switch)
+-c = Create + Switch ⚡
+#Two-step way
+   Command:  git branch dev && git switch dev
+   Action:   1. Creates dev branch  ➔  2. Moves/switches to dev
+
+#Shortcut way
+   Command:  git switch -c dev
+   Action:   ⚡ Creates dev branch AND switches to it in 1 step
+
+#Older Git way
+   Command:  git checkout -b dev
+   Action:   📜 Older historical equivalent of git switch -c dev
+
+──────────────────────────────────────────────────────────────────────────────────────────
+# === 🔗 SOFT LINK (Symlink / Shortcut) ===
+ln -s /path/to/original.txt softlink.txt   🔗 Create a symbolic shortcut pointing to original file
+ls -l softlink.txt                          🔍 View link destination (shows: softlink.txt -> original.txt)
+rm original.txt                             💥 Delete target file ➔ softlink breaks (points to nothing)
+
+# === 🧱 HARD LINK (Direct Mirror / Inode Pointer) ===
+ln /path/to/original.txt hardlink.txt       🧱 Create a direct file mirror sharing the exact same data
+ls -i original.txt hardlink.txt             🔍 Check Inode numbers ➔ both files share identical Inode ID
+rm original.txt                             🛡️ Delete target file ➔ hardlink still keeps full data intact
+
+# === 💥 DELETING ORIGINAL FILE: SOFT vs HARD LINK ===
+ls softlink.txt                             ❌ Soft Link BROKEN (points to a path that no longer exists)
+cat hardlink.txt                            ✅ Hard Link STILL WORKS (file data remains fully intact)
+🧠 How It Actually Works (The Clear Story)
+🔗 1. Soft Link (Shortcut Link)
+Think of a Soft Link as a signpost pointing to a house address.
+If you delete the original file, you demolish the house. <----
+The signpost (softlink.txt) is still standing, but it points to an empty plot of land.
+Result: The shortcut breaks and stops working completely.
+
+🧱 2. Hard Link (Twin Key to the Same Room)
+A Hard Link is NOT a copy—it is a second key that unlocks the exact same room on disk.
+Both original.txt and hardlink.txt point directly to the raw file data on your hard drive.
+If you edit hardlink.txt, original.txt updates instantly (and vice versa) because they share the exact same live content.<----
+If you mistakenly delete original.txt, you only threw away one key.<----
+Result: The room (your data) stays perfectly safe, and hardlink.txt continues to access it without losing a single character.
+──────────────────────────────────────────────────────────────────────────────────────────
+# === 📦 ARCHIVE(tar) vs COMPRESSION(gzip) AT A GLANCE ===
+ARCHIVE (tar)                               📁 Bundling many files into 1 file (No size reduction)
+COMPRESSION (gzip)                          🗜️ Shrinking file size using math algorithms (1 file only)
+COMBINED (tar.gz)                           🚀 Bundling many files AND shrinking them into 1 small file
+[ Multiple Files & Folders ] 
+          │
+          ▼  step 1: tar (Bundle into 1 file)
+   [ archive.tar ] (100 MB)
+          │
+          ▼  step 2: gzip (Compress the bundle)
+ [ archive.tar.gz ] (20 MB) 🌟
+tar  ➔ "TIE" (Ties many files together into one bundle)
+gzip ➔ "SQUEEZE" (Squeezes a file to make it small)
+
+# === 📦 TAR ARCHIVE COMMANDS (Tape Archive) ===
+tar -cvf archive.tar /path/to/dir            📦 Create uncompressed .tar archive from folder
+tar -xvf archive.tar                         📂 Extract files from uncompressed .tar archive
+tar -tvf archive.tar                         🔍 View contents of .tar archive without extracting
+
+# === 🗜️ GZIP COMPRESSION COMMANDS ===
+gzip file.txt                                🗜️ Compress file.txt into file.txt.gz (deletes original)
+gzip -d file.txt.gz                          📂 Decompress file.txt.gz back to file.txt
+gzip -k file.txt                             🔒 Compress file.txt while Keeping original file
+
+# === 🚀 COMBINED TAR + GZIP (.tar.gz / .tgz) ===
+tar -czvf archive.tar.gz /path/to/dir        📦 Create compressed .tar.gz archive from folder
+tar -xzvf archive.tar.gz                     📂 Extract compressed .tar.gz archive to current folder
+tar -tzvf archive.tar.gz                     🔍 View contents of .tar.gz archive without extracting
+
+-c ➔ Create      (Make a new archive)
+-x ➔ eXtract     (Unpack an archive)
+-t ➔ Test/List   (Look inside without extracting)
+-z ➔ GZip        (Filter archive through gzip compression)
+-v ➔ Verbose     (Show progress and file names on screen)
+-f ➔ File        (Specify the file name to work with)
+──────────────────────────────────────────────────────────────────────────────────────────

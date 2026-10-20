@@ -1,0 +1,2364 @@
++------------------------------------------------------------------------------------------------------------------------+
+|                                              TABLE OF CONTENTS & INDEX                                                 |
++------------------------------------------------------------------------------------------------------------------------+
+| 1. CONTROL PLANE (THE MANAGEMENT OFFICE)                                                                               |
+|    * kube-apiserver              # 🏢 [Front Office]       | Accepts commands from users and components               |
+|    * etcd                        # 📓 [Master Filing Room] | Distributed key-value database storing cluster state      |
+|    * kube-scheduler              # 🧠 [Placement Planner]  | Checks resources and decides where Pods should run        |
+|    * kube-controller-manager     # 👮 [Quality Inspector]  | Compares current cluster state with desired state         |
++------------------------------------------------------------------------------------------------------------------------+
+| 2. WORKER NODE COMPONENTS (THE FACTORY FLOOR)                                                                          |
+|    * Kubelet                     # 🧑‍🔧 [On-Site Foreman]  | Listens to Control Plane; ensures Pods remain healthy    |
+|    * Kube-proxy                  # 🔀 [Network Dispatcher] | Configures network routing to reach correct Pod IP        |
+|    * Container Engine            # ⚙️ [Power Engine]       | Low-level software pulling images and running pods        |
++------------------------------------------------------------------------------------------------------------------------+
+| 3. PODS & COMMON MULTI-CONTAINER FAILURES                                                                              |
+|    * Pod                         # 🏠 [Shared Living Space]| Smallest unit containing closely tied containers          |
+|    * Multi-Container Pod         # 👯 [Team Unit]          | Multiple containers in one Pod working together           |
+|    * Failure: Port Collision     # 🚪 [Traffic Bottleneck] | 2 containers claiming the same network port               |
+|    * Failure: Race Condition     # 🏁 [Timing Mismatch]    | Main container booting before helper container ready      |
+|    * Failure: Resource Crash     # 🍕 [Memory Overload]    | 1 container consuming all CPU/RAM, crashing pod           |
++------------------------------------------------------------------------------------------------------------------------+
+| 4. HIGH-LEVEL OBJECTS & OPERATIONS (THE BLUEPRINTS)                                                                    |
+|    * Volume                      # 💾 [External Storage]   | Persistent drive mounted into Pods for safety             |
+|    * ReplicaSet                  # 👯 [Copy Supervisor]    | Guarantees exact count of identical Pod clones active     |
+|    * Deployment                  # 📋 [Release Manager]    | Handles software updates, scaling, and rollbacks          |
+|    * Service                     # 🚦 [Constant Endpoint]  | Stable IP address and load balancer for apps              |
++------------------------------------------------------------------------------------------------------------------------+
+| 5. LABELS & SELECTORS OVERVIEW                                                                                         |
+|    * Imperative CLI Commands     # ⚡ Quick CLI execution  | Add labels and filter with equality/set selectors         |
+|    * Declarative YAML            # 📄 YAML Manifests       | Define metadata labels directly within configuration      |
+|    * Selector Types              # 🔍 Equality & Sets      | Target resources using operators like =, !=, in           |
+|    * Node Selector               # 🖥️ Hardware Targeting  | Force pods onto specific nodes via matching labels         |
++------------------------------------------------------------------------------------------------------------------------+
+| 6. DEPLOYMENT ROLLOUTS & ROLLBACKS WORKFLOW                                                                            |
+|    * Deployment Revisions        # 🔄 Version History      | Track progressive updates (v1 to v5)                      |
+|    * Rollback Capacity Trap      # ⚠️ Replicas Drop Risk   | Avoid losing active user capacity during rollbacks        |
+|    * Autoscale (HPA) Solution    # 📈 Automatic Scaling    | Maintain traffic demands smoothly using HPA                |
++------------------------------------------------------------------------------------------------------------------------+
+| 7. SERVICE NETWORKING & TRAFFIC ROUTING                                                                                |
+|    * Architecture Hierarchy      # 🌐 Layered Design       | NodePort -> ClusterIP -> Pod IP                           |
+|    * ClusterIP Service           # 🔗 Virtual IP Routing   | Internal stable load balancer for microservices           |
+|    * Volume Mapping              # 📂 Storage Integration  | emptyDir, hostPath, and AWS EBS / PVC mounting            |
++------------------------------------------------------------------------------------------------------------------------+
+| 8. CONFIGMAPS & STORAGE MANAGEMENT                                                                                     |
+|    * ConfigMap Volume Mounts     # 📦 Configuration Data   | Inject configuration files and environment variables      |
+|    * Storage Management          # ☁️ Persistent Storage   | Secure data across container restarts and node shifts     |
++------------------------------------------------------------------------------------------------------------------------+
+| 9. NAMESPACES, RESOURCE QUOTAS & LIMIT RANGES                                                                          |
+|    * Virtual Cluster Partitioning# 🏢 Namespace Isolation  | Separate teams and workloads cleanly                      |
+|    * ResourceQuotas              # 🛑 Consumption Limits   | Restrict aggregate CPU, memory, and pod counts            |
+|    * Limit Ranges                # 📏 Default Constraints  | Set default sizing constraints per namespace             |
++------------------------------------------------------------------------------------------------------------------------+
+| 10. ADVANCED WORKLOADS: JOBS, CRONJOBS & INIT CONTAINERS                                                               |
+|    * Jobs & CronJobs             # ⏱️ Batch Processing     | Run finite tasks to successful completion                 |
+|    * Init Containers             # 📥 Sequential Startup   | Prepare databases or environments prior to main apps      |
+|    * Pod Conditions & Events     # 🔍 Inspection Tools     | Diagnose lifecycle states, conditions, and events         |
++------------------------------------------------------------------------------------------------------------------------+
+
+WHAT IS KUBERNETES? 
+Kubernetes (K8s) is an open-source container orchestration platform that automatically deploys, scales, and manages containerized applications across a cluster of servers.   
+
+ARCHITECTURE --
++-------------------------------------------------------------------------------------------------------------+
+| MASTER (CONTROL PLANE)                                                                                      |
+|                                                                                                             |
+|   +-------------------------------------+                                                                   |
+|   |         Controller Manager          |                                                                   |
+|   |       (actual state = desired)      |                                                                   |
+|   +-------------------------------------+<-----+           +------------------+         +---------------+   |
+|                                                 \          |                  |         |               |   |
+|                                                  +-------->|    API Server    |-------->|  etcd Cluster |   |
+|   +-------------------------------------+      action      |  (Cluster Brain) |         | (Key-Value DB)|   |
+|   |           Kube Scheduler            |<---------------->|                  |         |               |   |
+|   +-------------------------------------+                  +------------------+         +---------------+   |
+|                                                                     ^                                       |
++---------------------------------------------------------------------|---------------------------------------+
+                             |                                        |
+                             |                             +-----------------------+
+                             |                             |         Admin         |
+                             |                             +-----------------------+
+                             v
++-------------------------------------------------------------------------------------------------------------+
+| NODE 1 (Worker Node)                                                                                        |
+|                                                                                                             |
+|   +-----------------------+               +-----------------------+       +-----------------------------+   |
+|   |      Kube-proxy       |               |        Kubelet        |------>|           POD-A             |   |
+|   | (Manages Pod networks)|               | (Node Agent / Health) |       |  [ Container ] [ Container] |   |
+|   +-----------------------+               +-----------------------+       +-----------------------------+   |
+|                                                       |                                                     |
+|   +-----------------------+                           |                   +-----------------------------+   |
+|   |   Container Engine    |---------------------------+------------------>|           POD-B             |   |
+|   | (Docker / containerd) |                                               |        [ Container ]        |   |
+|   +-----------------------+                                               +-----------------------------+   |
++-------------------------------------------------------------------------------------------------------------+
+
+
+                    ----KUBERNETES COMPREHENSIVE ARCHITECTURE & OBJECT REFERENCE----
+
+1. CONTROL PLANE (THE MANAGEMENT OFFICE)
+-----------------------------------------------------------------------------------------------------------------------------
+* kube-apiserver              # 🏢 [Front Office]       | Accepts commands from users and components; coordinates all cluster activity.
+* etcd                        # 📓 [Master Filing Room] | Distributed key-value database storing every piece of cluster state and history. (Like: CHEF OHAI VS ANSIBLE SETUP)
+* kube-scheduler              # 🧠 [Placement Planner]  | Checks available node resources and decides where new Pods should run.
+* kube-controller-manager     # 👮 [Quality Inspector]  | Continuously compares current cluster state with desired state to fix gaps.(actual state = desired)
+
+2. WORKER NODE COMPONENTS (THE FACTORY FLOOR)
+-----------------------------------------------------------------------------------------------------------------------------
+* Kubelet                     # 🧑‍🔧 [On-Site Foreman]  | Listens to Control Plane; ensures assigned Pods remain healthy on the node.
+* Kube-proxy                  # 🔀 [Network Dispatcher] | Configures network routing so traffic smoothly reaches the correct Pod IP.
+* Container Engine            # ⚙️ [Power Engine]       | Low-level software (containerd/CRI-O) that pulls images and executes containers.
+
+3. PODS & COMMON MULTI-CONTAINER FAILURES
+-----------------------------------------------------------------------------------------------------------------------------
+* Pod                         # 🏠 [Shared Living Space]| Smallest unit containing one or more closely tied containers sharing resources.
+* Multi-Container Pod         # 👯 [Team Unit]          | Multiple containers in one Pod (e.g., Main App + Logging Sidecar) working together.
+* Failure: Port Collision     # 🚪 [Traffic Bottleneck] | Fails when 2 containers inside the same Pod attempt to claim the same network port.
+* Failure: Race Condition     # 🏁 [Timing Mismatch]    | Fails when the main container boots up before its helper container is ready.
+* Failure: Resource Crash     # 🍕 [Memory Overload]    | Fails when 1 greedy container consumes all CPU/RAM, causing the entire Pod to crash.
+
+4. HIGH-LEVEL OBJECTS & OPERATIONS (THE BLUEPRINTS)
+-----------------------------------------------------------------------------------------------------------------------------
+* Volume                      # 💾 [External Storage]   | Persistent drive mounted into Pods so data stays safe even if containers restart.
+* ReplicaSet                  # 👯 [Copy Supervisor]    | Guarantees an exact count of identical Pod clones are active at all times.
+* Deployment                  # 📋 [Release Manager]    | Handles software updates, scaling up/down, and automatic rollbacks smoothly.
+* Service                     # 🚦 [Constant Endpoint]  | Gives a stable IP address and load balancer so apps can always be reached.
+
+5. MANAGEMENT & SETUP TOOLS
+-----------------------------------------------------------------------------------------------------------------------------
+* kubectl                     # 📱 [Remote Controller]  | Command line interface used by admins to send commands to the API Server.
+* kubeadm                     # 🧰 [Assembly Toolkit]   | Bootstrap utility used to quickly install and stand up a new Kubernetes cluster.
+* kubefed                     # 🌐 [Global Director]    | High-level tool used to federate and manage multiple Kubernetes clusters at once.
+
+─────────────────────────────────────────────────────────────────────────────────────────
+
+🧊 Kubernetes Object: 
+        A persistent blueprint/entity in your cluster that Kubernetes continually manages to match your desired state.
+📂 YOUR FILE (Manifest) What You Want vs. What Kubernetes Does 📄 YOUR YAML FILE (The Object)
+ ┌────────────────────────────────────────┐
+ | kind: Pod                              |
+ | metadata:                              |
+ |   name: testpod                        |
+ | spec:                                  |
+ |   containers:                          |
+ |     - name: c00                        |
+ |       image: ubuntu                    |
+ └────────────────────────────────────────┘
+                    │
+                    ▼ (You run: kubectl apply -f pod.yml)
+ 💾 KUBERNETES DATABASE (Saved as an Object)
+ ┌────────────────────────────────────────┐
+ | Stored Desired State (`spec`):         |
+ | "I want 1 Pod named 'testpod' running."|
+ └────────────────────────────────────────┘
+                    │
+                    ▼ (Kubernetes Control Loop constantly checks...)
+ ⚡ CLUSTER REALITY (`status`)
+ ┌────────────────────────────────────────┐
+ | 🔍 Is the Pod running right now?       |
+ | 🟩 YES -> Status: Running (All good!)  |
+ | 🟥 NO  -> Status: Crashed/Deleted      |
+ |           (Kubernetes automatically    |
+ |            restarts it to fix it!)     |
+ └────────────────────────────────────────┘
+
+ ⚙️ Spec vs. Status:
+   * 📋 spec   = Desired state (what you want the cluster to look like).
+   * 🔍 status = Actual state (what is actually happening right now).
+#
+ 🔀 Imperative vs. Declarative:
+   * ⚡ Imperative  = Giving direct command-line instructions (e.g., kubectl run).
+   * 📄 Declarative = Applying configuration files (e.g., kubectl apply -f file.yml).
+#
+ 📦 Pod: The smallest deployable unit in Kubernetes containing one or more containers sharing the same network and storage.
+#
+ - 🔄 Restart Policy: Tells Kubernetes what to do when a container stops or crashes:
+     * 🔄 Always    (Default) : Always restarts the container, no matter why it stopped. (Best for web servers like NGINX/Apache).
+     * ⚠️ OnFailure           : Restarts ONLY if it crashes/errors (exit code ≠ 0). (Best for batch/backup jobs).
+     * 🛑 Never             : Never restarts the container, even if it crashes. (Best for one-time scripts).
+
+─────────────────────────────────────────────────────────────────────────────────────────
+
+Master - Node in 3 Instances----
+# ------------------------------------------------------------------------------
+# 🗡️ STAGE 1: DEPENDENCIES & CONTAINER ENGINE SETUP
+# ------------------------------------------------------------------------------
+sudo su                                                 # 👑 Escalates to root user | Grants administrative permissions required for system setup
+apt-get update                                          # 🔄 Updates package index lists | Refreshes repository metadata for fresh software installs
+apt-get install -y apt-transport-https                  # 🛡️ Installs HTTPS transport support | Enables secure package downloading over encrypted repositories
+apt install -y docker.io                                # 🐳 Installs Docker container engine | Provides the underlying runtime to build and run containers
+docker --version                                        # 🔍 Verifies Docker version installation | Confirms the container engine is active and working
+systemctl start docker                                  # 🔥 Starts Docker service daemon | Launches the background container daemon process
+systemctl enable docker                                 # 🔁 Enables Docker service on boot | Configures the container engine to auto-start upon system reboot
+# 💬 SUMMARY: Escalated to root, updated system packages, installed Docker, and activated its background daemon service.
+
+# ------------------------------------------------------------------------------
+# 🔑 STAGE 2: REPOSITORY & KUBERNETES TOOLING INSTALLATION
+# ------------------------------------------------------------------------------
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add # 🎟️ Adds Google Cloud GPG signing key | Trusts the official Kubernetes repository packages
+echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list # 📜 Adds K8s apt repository source | Registers the official Kubernetes package server list
+apt-get update                                          # 🔄 Updates package index lists again | Pulls package lists from the newly added Kubernetes repository
+apt-get install -y kubelet kubeadm kubectl kubernetes-cni # 📦 Installs K8s core tools | Deploys kubelet, cluster bootstrapper, CLI wand, and networking components
+# 💬 SUMMARY: Configured Google security keys, added the official Kubernetes repository, and installed all core K8s binaries.
+
+# ------------------------------------------------------------------------------
+# 🏰 STAGE 3: BOOTSTRAPPING THE MASTER NODE (CONTROL PLANE)
+# ------------------------------------------------------------------------------
+kubeadm init                                            # 🧙‍♂️ Initializing Master Node | Boots up the Control Plane Citadel and generates the cluster brain
+mkdir -p $HOME/.kube                                    # 📂 Creates user configuration directory | Prepares local storage folder for admin credentials
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config     # 📋 Copies cluster admin configuration | Grants administrative control access via kubectl wand
+chown $(id -u):$(id -g) $HOME/.kube/config              # 🔐 Sets correct file ownership on config | Secures access permissions for the current user account
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml # 🌐 Deploys Flannel network plugin | Establishes pod-to-pod communication channels across nodes
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/k8s-manifests/kube-flannel-rbac.yml # 🛡️ Applies Flannel RBAC permissions | Authorizes network routing components to communicate safely
+# 💬 SUMMARY: Initialized the Master node control plane, configured admin access credentials, and deployed cluster networking.
+
+# ------------------------------------------------------------------------------
+# 🏭 STAGE 4: CONFIGURING AND JOINING WORKER NODES
+# ------------------------------------------------------------------------------
+# [ACTION ON WORKER NODE]: Execute the join command provided by the master during initialization
+kubeadm join 172.31.6.165:6443 --token kl9fhu.co2n90v3rxtqllrs --discovery-token-ca-cert-hash sha256:b0f8003d23dbf445e0132a53d7aa1922bdef8d553d9eca06e65c928322b3e7c0 # 🤝 Joins worker node to cluster | Links the server work floor to the Master Citadel control plane
+# [ACTION ON MASTER NODE]: Verify all nodes have successfully connected to the cluster
+kubectl get nodes                                       # 👁️ Lists active cluster nodes | Confirms worker nodes have successfully joined the realm
+# 💬 SUMMARY: Executed the join command on worker nodes using the secure token and verified cluster membership from the master node.
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+--------Installing "MINI Kube" Local/instance-------
+
+sudo su                                                                                            # 🔑 Switches to root user | Grants administrative privileges required for system installations
+sudo apt update && sudo apt -y install docker.io                                                   # 🐳 Installs Docker engine | Updates package lists and downloads the container runtime daemon
+# 🔍 Verify Docker: Run 'docker --version' to check if it installed successfully.
+
+curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.28.0/bin/linux/amd64/kubectl   # 📥 Downloads kubectl CLI | Fetches the official Kubernetes cluster management binary tool
+chmod +x ./kubectl                                                                                 # 🔓 Makes kubectl executable | Grants execution permissions to the binary file
+sudo mv ./kubectl /usr/local/bin/kubectl                                                           # 📦 Moves kubectl to system path | Relocates the binary globally so it runs from anywhere
+# 🔍 Verify kubectl: Run 'kubectl version --client' to check if the CLI is ready.
+
+curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64       # 🌐 Downloads Minikube binary | Fetches the local single-node cluster installer tool
+chmod +x minikube                                                                                  # 🔓 Makes minikube executable | Grants execution permissions to the minikube file
+sudo mv minikube /usr/local/bin/                                                                   # 📦 Moves minikube to system path | Relocates the binary globally for execution
+# 🔍 Verify Minikube binary: Run 'minikube version' to confirm successful installation.
+ # 📦 EXAMPLE 1: Basic Pod with Custom Command & Restart Policy
+apiVersion: v1                     # ⚙️ API version for core objects
+kind: Pod                          # 🏷️ Object type: Pod
+metadata:                          
+  name: testpod                    # 🏷️ Name of the pod
+spec:                              # 📋 Specification of desired behavior
+  containers:                      
+    - name: c00                    # 🐳 Container name
+      image: ubuntu                # 🖼️ Docker image to use
+      # 💬 Infinite loop printing a message every 5 seconds:
+      command: ["/bin/bash", "-c", "while true; do echo Hello-Bhupinder; sleep 5 ; done"]
+  restartPolicy: Never             # 🔄 Do not restart container if it exits (Defaults to Always)
+ # 📦📦 EXAMPLE 2: Multi-Container Pod Environment
+# 💡 Multiple containers run inside the SAME pod and share network/storage.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: testpod3                   # 🏷️ Multi-container pod name
+spec:
+  containers:
+    - name: c00                    # 🐳 Container 1
+      image: ubuntu                # 🖼️ Base image
+      command: ["/bin/bash", "-c", "while true; do echo Technical-Guftgu; sleep 5 ; done"]
+      
+    - name: c01                    # 🐳 Container 2 (runs alongside Container 1)
+      image: ubuntu                # 🖼️ Base image
+      command: ["/bin/bash", "-c", "while true; do echo Hello-Bhupinder; sleep 5 ; done"]
+ # 🔑 EXAMPLE 3: Pod with Environment Variables
+apiVersion: v1
+kind: Pod
+metadata:
+  name: environments               # 🏷️ Pod name
+spec:
+  containers:
+    - name: c00                    # 🐳 Container name
+      image: ubuntu                # 🖼️ Base image
+      command: ["/bin/bash", "-c", "while true; do echo Hello-Bhupinder; sleep 5 ; done"]
+      env:                         # 🔑 Environment variables list
+        - name: MYNAME             # 📌 Variable key/name
+          value: BHUPINDER         # 💬 Variable value
+ # 🌐 EXAMPLE 4: Pod with Exposed Ports
+apiVersion: v1
+kind: Pod
+metadata:
+  name: testpod4                   # 🏷️ Pod name
+spec:
+  containers:
+    - name: c00                    # 🐳 Container name
+      image: httpd                 # 🖼️ Apache web server image
+      ports:
+        - containerPort: 80        # 🔌 Documents/exposes port 80 inside container
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+                                                    🏷️ 1. LABELS & SELECTORS OVERVIEW
+
+💡 WHAT THEY ARE: 
+Labels are like sticky notes attached to Kubernetes objects. Selectors are search filters used to find and manage objects based on those labels.
+
+🖼️ VISUAL CONCEPT:
+🏷️ PODS WITH LABELS                                        🔍 SELECTOR (The Filter)
+ ┌─────────────────────────┐                                ┌─────────────────────────┐
+ │ Pod 1 (env: development)│                                │                         │
+ │ Pod 2 (env: production) │ ──(Find)──────────────────────>│ "Give me all pods       │
+ │ Pod 3 (env: development)│                                │  where env=development" │
+ └─────────────────────────┘                                └────────────┬────────────┘
+                                                                         │
+                                                                         ▼ 🎯 Matches: Pod 1 & Pod 3
+
+⚡ IMPERATIVE COMMANDS (CLI):
+kubectl label pod delhipod env=development                                                  # 🏷️ Adds a label to a running pod
+kubectl get pods --show-labels                                                              # 📊 Displays all pods with their labels
+kubectl get pods -l env=development                                                         # 🔍 Filters pods using an equality selector
+
+📄 DECLARATIVE YAML EXAMPLE (pod.yaml):
+kind: Pod
+apiVersion: v1
+metadata:
+  name: delhipod
+  labels:
+    env: development
+    class: pods
+spec:
+  containers:
+    - name: c00
+      image: ubuntu
+      command: ["/bin/bash", "-c", "while true; do echo Hello-Bhupinder; sleep 5 ; done"]
+
+                                                    🔍 2. SELECTOR TYPES & REFERENCE TABLE
+
+Equality-Based Selector: Matches exact values using operators like `=`, `==`, or `!=`. (Example: `env = development` or `environment != production`)
+Set-Based Selector: Matches against a group or set of values using `In`, `NotIn`, or `Exists`. (Example: `myname In (Bhupinder, Bupinder, Bhopendra)`)
+
++---------------------+-------------------+-------------------------------------------------------------+---------------------------------------+
+| SELECTOR TYPE       | OPERATOR          | DESCRIPTION                                                 | KUBECTL COMMAND EXAMPLE               |
++---------------------+-------------------+-------------------------------------------------------------+---------------------------------------+
+| Equality-Based      | =  or  ==         | Matches exact values                                        | kubectl get pods -l env=dev           |
+| Equality-Based      | !=                | Matches anything except the specified value                 | kubectl get pods -l env!=prod         |
+| Set-Based           | in                | Matches if the label value is inside a specific list        | kubectl get pods -l 'name in (A, B)'  |
+| Set-Based           | notin             | Matches if the label value is NOT in the list               | kubectl get pods -l 'env notin (prod)'|
+| Set-Based           | Key Exists        | Matches if the label key simply exists (any value)          | kubectl get pods -l 'hardware'        |
++---------------------+-------------------+-------------------------------------------------------------+---------------------------------------+
+
+                                                    🖥️ 3. NODE SELECTOR
+
+💡 WHAT IT IS: 
+Forces Kubernetes to place a Pod only onto a specific cluster node that matches required hardware or environment labels.
+
+📄 DECLARATIVE YAML EXAMPLE (nodeselector.yaml):
+kind: Pod
+apiVersion: v1
+metadata:
+  name: nodelabels
+  labels:
+    env: development
+spec:
+  containers:
+    - name: c00
+      image: ubuntu
+      command: ["/bin/bash", "-c", "while true; do echo Hello-Bhupinder; sleep 5 ; done"]
+  nodeSelector:
+    hardware: t2-medium
+
+                                                    🚀 4. SCALING, RELIABILITY, & CONTROLLERS
+
+📌 WHY CONTROLLERS ARE REQUIRED:
+Kubernetes does not keep apps running or scaled up automatically by default. We use Controller objects (like ReplicationController, ReplicaSet, Deployment, HPA) to provide:
+📈 Scaling: Instantly adjusting replica counts up or down based on load.
+🛡️ Reliability (Self-Healing): Automatically recreating crashed or failed pods.
+🌐 Load Balancing: Spreading incoming user traffic evenly across instances.
+🔄 Rolling Updates: Updating app versions seamlessly with zero downtime.
+
+🖼️ VISUAL CONCEPT (SELF-HEALING & SCALING):
+🎛️ REPLICA SET CONTROLLER
+ ┌─────────────────────────────────────────────────────────────────┐
+ │ 🔄 Continuously monitors cluster to match desired replica count │
+ └─────────────────────────────────┬───────────────────────────────┘
+                                   │
+             ┌─────────────────────┴─────────────────────┐
+             ▼ (If a pod crashes 💥)                     ▼ (If you scale up 📈)
+ ┌───────────────────┐                       ┌───────────────────┐
+ │ 💥 Pod 1 (Dead)   │                       │ ➕ Spawns Pod 3   │
+ │ 🟢 Pod 2 (Running)│                       │    automatically  │
+ └─────────┬─────────┘                       └───────────────────┘
+           │
+           ▼ (Automatically recreates!)
+ ┌───────────────────┐
+ │ 🟢 Pod 1 (New)    │
+ │ 🟢 Pod 2 (Running)│
+ └───────────────────┘
+
+📊 SCALING ARCHITECTURE (HOTSTAR IPL CASE STUDY):
+ 📈 MANUAL SCALING (PRE-MATCH PREPARATION)
+ ┌──────────────────────────┐               ┌──────────────────────────┐
+ | 100 Replicas (Normal)    | ──(Scale)──>  | 5,000 Replicas (IPL Peak)|
+ └──────────────────────────┘               └──────────────────────────┘
+
+ 🤖 AUTOMATIC AUTO-SCALING (HPA - LIVE TRAFFIC SPIKES)
+ ┌──────────────────────────┐               ┌──────────────────────────┐
+ | CPU Usage > 70%          | ──(Triggers)─>| Auto-scales dynamically  |
+ |                          |               | from 100 to 10,000 Pods  |
+ └──────────────────────────┘               └──────────────────────────┘
+
+⚡ 1. MANUAL SCALING (PREDICTABLE TRAFFIC SURGES)
+kubectl scale deployment hotstar-ipl-stream --replicas=5000                                 # 🚀 Pre-warms streaming service to 5,000 pods before match starts
+kubectl scale deployment hotstar-ipl-stream --replicas=100                                  # 📉 Cools down infrastructure to baseline capacity after match
+
+🤖 2. AUTOMATIC SCALING (HORIZONTAL POD AUTOSCALER - HPA)
+kubectl autoscale deployment hotstar-ipl-stream --cpu-percent=70 --min=100 --max=10000     # 📈 Automatically adjusts replica count when average CPU usage exceeds 70%
+kubectl get hpa hotstar-ipl-stream                                                          # 📊 Displays active replica count, target metrics, and current usage
+
+📄 DECLARATIVE HPA MANIFEST (hpa.yaml):
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hotstar-ipl-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hotstar-ipl-stream
+  minReplicas: 100
+  maxReplicas: 10000
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+🌟 WHAT IS A KUBERNETES REPLICA SET?
+While a basic ReplicationController only uses simple equality checks, a modern ReplicaSet provides advanced pod management:
+🛡️ Self-Healing: Automatically recreates crashed or deleted pods to maintain the exact desired replica count.
+🎯 Advanced Selectors: Supports powerful set-based expressions (In, NotIn, Exists) for flexible pod grouping.
+⚖️ Scalability: Instantly scales pod replicas up or down to handle changing workloads.
+
+📋 WHAT IS A KUBERNETES REPLICATION CONTROLLER?
+As the legacy precursor to modern ReplicaSets, a ReplicationController provides foundational cluster scaling:
+🔢 Exact Replica Guarantees: Ensures a specified exact number of pod copies are running at all times.
+🔍 Equality-Based Filtering: Uses basic key-value match filters (e.g., env=dev) to target and manage pods.
+🛡️ Basic Self-Healing: Recreates pods if nodes fail or containers crash, though now largely superseded by ReplicaSets and Deployments.
+
+📦 WHAT IS A KUBERNETES DEPLOYMENT?
+While a ReplicaSet only manages pod counts, a Deployment sits at the top level and gives you application lifecycle superpowers:
+🔄 Rolling Updates (Zero Downtime): Updates pods one by one without dropping user connections.
+⏪ Easy Rollbacks: Instantly roll back to previous stable versions if a bug is introduced.
+📦 Declarative Blueprint: Manages the complete application lifecycle from creation to updates.
+
+                                                    📋 5. REPLICATION CONTROLLER (LEGACY)
+
+⚡ IMPERATIVE COMMANDS:
+kubectl scale rc myreplica --replicas=5                                                     # 📈 Scales the legacy replication controller
+kubectl delete rc myreplica                                                                 # 🗑️ Deletes the controller and its managed pods
+
+📄 DECLARATIVE YAML EXAMPLE (replicationcontroller.yaml):
+kind: ReplicationController
+apiVersion: v1
+metadata:
+  name: myreplica
+spec:
+  replicas: 2
+  selector:
+    myname: Bhupinder Rajput
+  template:
+    metadata:
+      name: testpod6
+      labels:
+        myname: Bhupinder
+    spec:
+      containers:
+        - name: c00
+          image: ubuntu
+          command: ["/bin/bash", "-c", "while true; do echo Hello-Bhupinder; sleep 5 ; done"]
+
+
+                                                    🌟 6. REPLICA SET (MODERN)
+
+⚡ IMPERATIVE COMMANDS:
+kubectl scale rs myrs --replicas=4                                                          # 📈 Scales the modern replica set
+kubectl delete rs myrs                                                                      # 🗑️ Deletes the replica set and its managed pods
+
+📄 DECLARATIVE YAML EXAMPLE (replicaset.yaml):
+kind: ReplicaSet
+apiVersion: apps/v1
+metadata:
+  name: myrs
+spec:
+  replicas: 2
+  selector:
+    matchExpressions:
+      - {key: myname, operator: In, values: [Bhupinder, Bupinder, Bhopendra]}
+      - {key: env, operator: NotIn, values: [production]}
+  template:
+    metadata:
+      name: testpod7
+      labels:
+        myname: Bhupinder
+    spec:
+      containers:
+        - name: c00
+          image: ubuntu
+          command: ["/bin/bash", "-c", "while true; do echo Technical-Guftgu; sleep 5 ; done"]
+
+========================================================================================================================================================
+
+                         🗺️ EXTENDED & COMPREHENSIVE KUBERNETES LAB RUNBOOK: FULL 50-REPLICA WORKFLOW & SMOOTH ROLLBACK & AUTOMATED HPA FIX
+
+  [1] DEPLOYMENT HISTORY REVISIONS
+  =================================
+  (v1) Ubuntu ───────> [ 2 Pods  ]
+  (v2) Amazon Linux ──> [ 5 Pods  ]  <--- Target Revision
+  (v3) CentOS ────────> [ 10 Pods ]
+  (v4) Fedora ────────> [ 3 Pods  ]
+  (v5) Alpine ────────> [ 50 Pods ]  <--- Live Peak (50 Active Users)
+                           ||
+                           || (Rollback Triggered)
+                           \/ `kubectl rollout undo --to-revision=2`
+
+  [2] THE ROLLBACK CAPACITY TRAP
+  ==============================
+  ! WARNING: Revision 2 restores Amazon Linux BUT slams capacity down to 5 Pods!
+  ! CONSEQUENCE: 45 User Connections dropped immediately (Severe Bottleneck).
+
+                           ||
+                           || (Apply Automated Solution)
+                           \/ `kubectl autoscale deployment os-deployment --min=5 --max=50`
+
+  [3] THE AUTOSCALE (HPA) SOLUTION
+  =================================
+  +-------------------------------------------------------------------------+
+  |  Horizontal Pod Autoscaler (HPA) detects high user load on 5 pods       |
+  |  and AUTOMATICALLY scales Amazon Linux right back up to 50 Pods!       |
+  +-------------------------------------------------------------------------+
+                           ||
+                           \/
+  SUCCESS: [ 50 Pods ] Active on Amazon Linux (Zero Downtime / Smooth Load)
+
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ 1️⃣ STEP 1: INITIAL DEPLOYMENT (UBUNTU BASE, REPLICAS: 2)                                                                                          │
+ │ • What is happening: We write our base `deployment.yaml` file to spin up our initial Kubernetes cluster workload. It starts with 2 Ubuntu pods     │
+ │   running a simple background script loop.                                                                                                         │
+ │                                                                                                                                                    │
+ │ • Base Manifest File (`deployment.yaml`):                                                                                                          │
+ │   apiVersion: apps/v1                                                                                                                              │
+ │   kind: Deployment                                                                                                                                 │
+ │   metadata:                                                                                                                                        │
+ │     name: os-deployment          # Unique name for our Kubernetes deployment                                                                       │
+ │   spec:                                                                                                                                            │
+ │     replicas: 2                  # Initial pod count set to 2 instances                                                                            │
+ │     selector:                                                                                                                                      │
+ │       matchLabels:                                                                                                                                 │
+ │         app: os-app               # Match key used by deployment selector                                                                          │
+ │     template:                                                                                                                                      │
+ │       metadata:                                                                                                                                    │
+ │         labels:                                                                                                                                    │
+ │           app: os-app             # Label attached to every pod generated                                                                          │
+ │       spec:                                                                                                                                        │
+ │         containers:                                                                                                                                │
+ │         - name: os-container                                                                                                                       │
+ │           image: ubuntu:latest   # Base container image for Version 1                                                                              │
+ │           command: ["sh", "-c", "while true; do echo Ubuntu running...; sleep 5; done"] # Background process loop                                  │
+ │                                                                                                                                                    │
+ │ 🛠️ Commands Executed & Output Logs:                                                                                                               │
+ │   # Apply configuration to cluster                                                                                                                 │
+ │   kubectl apply -f deployment.yaml                                                                                                                 │
+ │   # -> Expected Output: deployment.apps/os-deployment created                                                                                      │
+ │                                                                                                                                                    │
+ │   # Check deployment status                                                                                                                        │
+ │   kubectl get deployments                                                                                                                          │
+ │   # -> Expected Output: NAME            READY   UP-TO-DATE   AVAILABLE   AGE                                                                       │
+ │   #                    os-deployment   2/2     2            2           12s                                                                        │
+ │                                                                                                                                                    │
+ │   # View live pod logs                                                                                                                             │
+ │   kubectl logs -l app=os-app --tail=2                                                                                                              │
+ │   # -> Expected Output: Ubuntu running...                                                                                                          │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                           ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ 2️⃣ STEP 2: VERSION 2 - AMAZON LINUX UPDATE & SCALE TO 5 (Baseline Saved Revision)                                                                 │
+ │ • What is happening: We edit our `deployment.yaml` file to change the container image to Amazon Linux and scale the replica count up to 5.         │
+ │   When we run `kubectl apply`, Kubernetes saves this state in its rollout history as **Revision 2**.                                               │
+ │                                                                                                                                                    │
+ │ • Updated Manifest Section (`deployment.yaml`):                                                                                                    │
+ │   spec:                                                                                                                                            │
+ │     replicas: 5                  # Updated declarative replica target                                                                              │
+ │     template:                                                                                                                                      │
+ │       spec:                                                                                                                                        │
+ │         containers:                                                                                                                                │
+ │         - name: os-container                                                                                                                       │
+ │           image: amazonlinux:latest # Updated OS image for Version 2                                                                               │
+ │           command: ["sh", "-c", "while true; do echo Amazon Linux running...; sleep 5; done"]                                                      │
+ │                                                                                                                                                    │
+ │ 🛠️ Commands Executed & Output Logs:                                                                                                               │
+ │   # Apply updated YAML specification                                                                                                               │
+ │   kubectl apply -f deployment.yaml                                                                                                                 │
+ │   # -> Expected Output: deployment.apps/os-deployment configured                                                                                   │
+ │                                                                                                                                                    │
+ │   # Scale command to verify active pods                                                                                                            │
+ │   kubectl scale deployment os-deployment --replicas=5                                                                                              │
+ │   # -> Expected Output: deployment.apps/os-deployment scaled                                                                                       │
+ │                                                                                                                                                    │
+ │   # Inspect rollout revision history                                                                                                               │
+ │   kubectl rollout history deployment os-deployment                                                                                                 │
+ │   # -> Expected Output: REVISION  CHANGE-CAUSE                                                                                                     │
+ │   #                    1         <none> (Ubuntu, Replicas: 2)                                                                                      │
+ │   #                    2         <none> (Amazon Linux, Replicas: 5)                                                                                │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                           ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ 3️⃣ STEP 3: VERSION 3 - CENTOS UPDATE & SCALE TO 10                                                                                                 │
+ │ • What is happening: We upgrade our deployment to use CentOS and increase capacity to 10 pods to handle higher simulated background tasks.         │
+ │                                                                                                                                                    │
+ │ • Updated Manifest Section (`deployment.yaml`):                                                                                                    │
+ │   spec:                                                                                                                                            │
+ │     replicas: 10                 # Scaled up to 10 instances                                                                                       │
+ │     template:                                                                                                                                      │
+ │       spec:                                                                                                                                        │
+ │         containers:                                                                                                                                │
+ │         - name: os-container                                                                                                                       │
+ │           image: centos:latest   # Updated OS image for Version 3                                                                                  │
+ │           command: ["sh", "-c", "while true; do echo CentOS running...; sleep 5; done"]                                                            │
+ │                                                                                                                                                    │
+ │ 🛠️ Commands Executed & Output Logs:                                                                                                                │
+ │   kubectl apply -f deployment.yaml                                                                                                                 │
+ │   # -> Expected Output: deployment.apps/os-deployment configured                                                                                   │
+ │                                                                                                                                                    │
+ │   kubectl scale deployment os-deployment --replicas=10                                                                                             │
+ │   # -> Expected Output: deployment.apps/os-deployment scaled                                                                                       │
+ │                                                                                                                                                    │
+ │   kubectl get deployments                                                                                                                          │
+ │   # -> Expected Output: NAME            READY   UP-TO-DATE   AVAILABLE   AGE                                                                       │
+ │   #                    os-deployment   10/10   10           10          45s                                                                        │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                           ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ 4️⃣ STEP 4: VERSION 4 - FEDORA UPDATE & SCALE TO 3                                                                                                 │
+ │ • What is happening: We update our image to Fedora and drop capacity down to 3 pods to test low-resource usage behavior.                           │
+ │                                                                                                                                                    │
+ │ • Updated Manifest Section (`deployment.yaml`):                                                                                                    │
+ │   spec:                                                                                                                                            │
+ │     replicas: 3                  # Temporarily scaled down to 3                                                                                    │
+ │     template:                                                                                                                                      │
+ │       spec:                                                                                                                                        │
+ │         containers:                                                                                                                                │
+ │         - name: os-container                                                                                                                       │
+ │           image: fedora:latest   # Updated OS image for Version 4                                                                                  │
+ │           command: ["sh", "-c", "while true; do echo Fedora running...; sleep 5; done"]                                                            │
+ │                                                                                                                                                    │
+ │ 🛠️ Commands Executed & Output Logs:                                                                                                               │
+ │   kubectl apply -f deployment.yaml                                                                                                                 │
+ │   # -> Expected Output: deployment.apps/os-deployment configured                                                                                   │
+ │                                                                                                                                                    │
+ │   kubectl scale deployment os-deployment --replicas=3                                                                                              │
+ │   # -> Expected Output: deployment.apps/os-deployment scaled                                                                                       │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                           ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ 5️⃣ STEP 5: VERSION 5 - ALPINE & SCALE TO 50 USERS / REPLICAS (Target Peak Workload)                                                                │
+ │ • What is happening: To support a burst of 50 active user logins, we switch to a ultra-lightweight Alpine Linux image and scale up to **50 pods**. │
+ │                                                                                                                                                    │
+ │ • Updated Manifest Section (`deployment.yaml`):                                                                                                    │
+ │   spec:                                                                                                                                            │
+ │     replicas: 50                 # Peak load capacity: 50 pods for 50 active users                                                                 │
+ │     template:                                                                                                                                      │
+ │       spec:                                                                                                                                        │
+ │         containers:                                                                                                                                │
+ │         - name: os-container                                                                                                                       │
+ │           image: alpine:latest   # Ultra-lightweight base image for rapid scaling                                                                  │
+ │           command: ["sh", "-c", "while true; do echo Alpine User Login Active...; sleep 5; done"]                                                  │
+ │                                                                                                                                                    │
+ │ 🛠️ Commands Executed & Output Logs:                                                                                                                │
+ │   kubectl apply -f deployment.yaml                                                                                                                 │
+ │   # -> Expected Output: deployment.apps/os-deployment configured                                                                                   │
+ │                                                                                                                                                    │
+ │   kubectl scale deployment os-deployment --replicas=50                                                                                             │
+ │   # -> Expected Output: deployment.apps/os-deployment scaled                                                                                       │
+ │                                                                                                                                                    │
+ │   kubectl get deployments                                                                                                                          │
+ │   # -> Expected Output: NAME            READY     UP-TO-DATE   AVAILABLE   AGE                                                                     │
+ │   #                    os-deployment   50/50     50           50          2m                                                                       │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                           ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ 6️⃣ STEP 6: ROLLBACK TO VERSION 2 & HOW TO PREVENT TRAFFIC DROPS                                                                                   │
+ │ • What is happening: We execute a rollback to **Version 2 (Amazon Linux)**. However, because Version 2 was originally applied with `replicas: 5`,  │
+ │   Kubernetes will automatically scale down from **50 pods to 5 pods**, causing massive service degradation for active users!                       │
+ │                                                                                                                                                    │
+ │ ⚠️ THE PROBLEM (WHY THE APPLICATION FAILS FOR USERS):                                                                                              │
+ │   1. Rollback restores Revision 2's exact recorded YAML spec (`replicas: 5`).                                                                      │
+ │   2. 45 out of 50 active user pods get terminated immediately.                                                                                     │
+ │   3. The remaining 5 pods get overwhelmed by user traffic, causing slow response times or connection timeouts.                                     │
+ │                                                                                                                                                    │
+ │ 🛠️ STEP-BY-STEP SOLUTION FOR A SMOOTH ROLLBACK (KEEP 50 USERS HAPPY):                                                                              │
+ │                                                                                                                                                    │
+ │   # Step 6A: Trigger the rollback to Revision 2                                                                                                    │
+ │   kubectl rollout undo deployment os-deployment --to-revision=2                                                                                    │
+ │   # -> Output: deployment.apps/os-deployment rolled back                                                                                           │
+ │                                                                                                                                                    │
+ │   # Step 6B: IMMEDIATELY re-scale back to 50 replicas to maintain capacity on the Amazon Linux image!                                              │
+ │   kubectl scale deployment os-deployment --replicas=50                                                                                             │
+ │   # -> Output: deployment.apps/os-deployment scaled                                                                                                │
+ │                                                                                                                                                    │
+ │   # Step 6C: Verify all 50 pods are running smoothly under Version 2                                                                               │
+ │   kubectl get pods -l app=os-app --no-headers | wc -l                                                                                              │
+ │   # -> Output: 50                                                                                                                                  │
+ │                                                                                                                                                    │
+ │ 💡 PRO-TIP: AUTOMATIC SMOOTH SCALING VIA HPA (Horizontal Pod Autoscaler)                                                                           │
+ │   To avoid manual re-scaling, configure Kubernetes to auto-scale based on traffic load:                                                            │
+ │   `kubectl autoscale deployment os-deployment --cpu-percent=70 --min=5 --max=50`                                                                   │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+========================================================================================================================================================
+
+                                               ----🌐 KUBERNETES NETWORKING & LABS---
+
+ 🗂️ MULTI-CONTAINER POD SETUP & PORT VERIFICATION
+ • What is happening: We create a custom Pod containing two containers—one running an Ubuntu shell script and another running an Apache web server with exposed ports. Then, we step directly inside the container to verify port activity and test file responses using `curl`.
+ 
+ • Updated Manifest Section (`pod.yaml`):
+   apiVersion: v1                 # ⚙️ API version for core objects
+   kind: Pod                      # 🏷️ Object type: Pod
+   metadata:                      
+     name: testpod                # 🏷️ Name of the multi-container pod
+   spec:                          # 📋 Specification of desired behavior
+     containers:                  
+       - name: c00                # 🐳 Container 1 name
+         image: ubuntu            # 🖼️ Base image for container 1
+         command: ["/bin/bash", "-c", "while true; do echo Hello-Bhupinder; sleep 5 ; done"] # 💬 Infinite background loop script
+       - name: c01                # 🐳 Container 2 name
+         image: httpd             # 🖼️ Apache web server image for container 2
+         ports:
+           - containerPort: 80    # 🔌 Documents/exposes port 80 inside container 2
+
+ 🛠️ Commands Executed & Output Logs:
+    kubectl apply -f pod.yaml
+    # -> Expected Output: pod/testpod created
+    
+    kubectl get pods
+    # -> Expected Output: NAME      READY   STATUS    RESTARTS   AGE
+    #                    testpod   2/2     Running   0          10s
+
+    # 🚪 Step directly inside container c01 interactively
+    kubectl exec -it testpod -c c01 -- /bin/bash
+    # -> Expected Output: root@testpod:/# prompt opens
+
+    # 🔍 Check if port 80 is listening and working from inside the container:
+    curl http://localhost:80
+    # -> Expected Output: <html><body><h1>It works!</h1></body></html>
+
+    # 🚪 Exit back to your host terminal
+    exit
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🎨 TEXT DRAWING HIERARCHY & ARCHITECTURAL PURPOSES:
+
+nodeport(port)(Uses static port to connect outside world/Internet)
+  └── cluster ip(⚠️ Pod IPs are temporary so ClusterIP provides a permanent address)
+      └── pod ip (⚠️ Note: If the pod is destroyed, this IP is gone forever!)
+          └── [container]
+
+                      nodeport (Outer Layer - Worker Node Port e.g., 30000 - 32717)
+                      🌍 [Why it's needed]: Exposes the application externally to the outside world 
+                      (users, browsers, or external networks) by opening a static port across every 
+                      worker node IP address so traffic can enter the cluster from the outside.
+                      ┌────────────────────────────────────────────────────────────────────────┐
+                      │         cluster ip (Middle Layer - Virtual IP)                         │
+                      │         🔗 [Why its needed]: Acts as an internal stable load balancer |
+                      │         and Virtual IP for internal microservices. Since individual pod| 
+                      │         IPs are temporary and get destroyed when pods scale or restart,| 
+                      │         ClusterIP provides a permanent internal address so other apps  |
+                      │         can always find it without breaking.                           │
+                      │         ┌──────────────────────────────────────────────────┐           │
+                      │         │    pod ip (Inner Layer - Ephemeral Pod)          │           │
+                      │         │    🏠PriIP changes while every pod create/destroy│           │
+                      │         │    ┌──────────────┐                              │           │
+                      │         │    │  [Container] │                              │           │
+                      │         │    └──────────────┘                              │           │
+                      │         └──────────────────────────────────────────────────┘           │
+                      └────────────────────────────────────────────────────────────────────────┘
+
++ CLUSTERIP SERVICE and NODEPORT SERVICE +
+
+ 🗂️ DEPLOYMENT & CLUSTERIP SERVICE (INTERNAL VIRTUAL IP ROUTING)
+ • What is happening: We create a Deployment with an Apache container, paired with a **ClusterIP** service. Because individual pods are ephemeral (when a pod is destroyed, its IP address is gone forever), Kubernetes allocates a stable **Virtual IP (VIP)** via ClusterIP so other components inside the cluster can always reliably reach the application.
+
+ • Updated Manifest Section (`clusterip-deployment.yaml`):
+   apiVersion: apps/v1            # ⚙️ API version for deployment workloads
+   kind: Deployment               # 🏷️ Object type: Deployment
+   metadata:
+      name: mydeployments         # 🏷️ Name of the deployment controller
+   spec:
+      replicas: 1                 # 🔢 Desired count of pod replicas
+      selector:                   # 🎯 Tells the controller which pods to watch/belong to
+       matchLabels:
+        name: deployment          # 🔍 Label selector to target pods
+      template:                   # 📋 Blueprint for creating new pods
+        metadata:
+          name: testpod1          # 🏷️ Pod template name
+          labels:
+            name: deployment      # 🏷️ Label assigned to pods managed by this deployment
+        spec:
+         containers:
+           - name: c00            # 🐳 Container name inside deployment pod
+             image: httpd         # 🖼️ Apache web server image
+             ports:
+               - containerPort: 80# 🔌 Exposes container port 80
+   ---
+   kind: Service                  # 🏷️ Object type: Service
+   apiVersion: v1                 # ⚙️ API version for core objects
+   metadata:
+     name: demoservice            # 🏷️ Name of the internal cluster service
+   spec:
+     ports:
+       - port: 80                 # 🔌 Service port exposed on the Virtual IP
+         targetPort: 80           # 🎯 Target container port inside the pod
+     selector:
+       name: deployment           # 🔍 Apply this service to any pods matching this label
+     type: ClusterIP              # 🌐 Internal Virtual IP (ClusterIP) service type
+
+ 🛠️ Commands Executed & Output Logs:
+    kubectl apply -f clusterip-deployment.yaml
+    # -> Expected Output: deployment.apps/mydeployments created
+    #                    service/demoservice created
+    
+    kubectl get svc demoservice
+    # -> Expected Output: NAME          TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+    #                    demoservice   ClusterIP   10.96.100.50   <none>        80/TCP    10s
+
+ 🌐 How Access Works (ClusterIP Virtual IP & Port):
+    # Inside the cluster, applications connect to the Virtual IP (ClusterIP) address combined with the service port:
+    curl http://10.96.100.50:80
+    # Or using the stable internal service name DNS:
+    curl http://demoservice:80
+    # -> Expected Output: <html><body><h1>It works!</h1></body></html>
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ 🗂️ NODEPORT SERVICE (EXTERNAL ACCESS VIA NODE VIP & PORT)
+ • What is happening: While ClusterIP handles internal cluster traffic, a **NodePort** service extends accessibility by opening a static external port (between `30000-32767`) on every worker node's IP address. It maps incoming requests to the service's Virtual IP and forwards them to the underlying pods.
+
+ • Updated Manifest Section (`nodeport-deployment.yaml`):
+   apiVersion: apps/v1            # ⚙️ API version for deployment workloads
+   kind: Deployment               # 🏷️ Object type: Deployment
+   metadata:
+      name: mydeployments         # 🏷️ Name of the deployment controller
+   spec:
+      replicas: 1                 # 🔢 Desired count of pod replicas
+      selector:                   # 🎯 Tells the controller which pods to watch/belong to
+       matchLabels:
+        name: deployment          # 🔍 Label selector to target pods
+      template:                   # 📋 Blueprint for creating new pods
+        metadata:
+          name: testpod1          # 🏷️ Pod template name
+          labels:
+            name: deployment      # 🏷️ Label assigned to pods managed by this deployment
+        spec:
+         containers:
+           - name: c00            # 🐳 Container name inside deployment pod
+             image: httpd         # 🖼️ Apache web server image
+             ports:
+               - containerPort: 80# 🔌 Exposes container port 80
+   ---
+   kind: Service                  # 🏷️ Object type: Service
+   apiVersion: v1                 # ⚙️ API version for core objects
+   metadata:
+     name: demoservice-nodeport   # 🏷️ Name of the external NodePort service
+   spec:
+     type: NodePort               # 🌐 Specifies service type as NodePort
+     selector:
+       name: deployment           # 🔍 Matches pods carrying this label
+     ports:
+       - port: 80                 # 🔌 Service port on the internal Virtual IP
+         targetPort: 80           # 🎯 Target container port where app listens
+         nodePort: 30007          # 🌍 Static external port opened on every worker node (Range: 30000-32767)
+
+ 🛠️ Commands Executed & Output Logs:
+    kubectl apply -f nodeport-deployment.yaml
+    # -> Expected Output: deployment.apps/mydeployments created
+    #                    service/demoservice-nodeport created
+    
+    kubectl get svc demoservice-nodeport
+    # -> Expected Output: NAME                 TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+    #                    demoservice-nodeport NodePort   10.96.200.80   <none>        80:30007/TCP   10s
+
+ 🌐 How Access Works (NodePort & Worker Node IP):
+    # Outside the cluster, users access the application using any worker node's IP address combined with the assigned NodePort:
+    curl http://<Worker-Node-IP>:30007
+    # -> Expected Output: <html><body><h1>It works!</h1></body></html>
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ 🗂️ VOLUME LABS - EMPTYDIR (SHARED POD STORAGE)
+ • What is happening: We create a Pod with two CentOS containers that share data using an `emptyDir` volume mounted at different paths.
+ 
+ • Updated Manifest Section (`emptydir.yaml`):
+   apiVersion: v1                 # ⚙️ API version for core objects
+   kind: Pod                      # 🏷️ Object type: Pod
+   metadata:
+     name: myvolemptydir          # 🏷️ Name of the volume-enabled pod
+   spec:
+     containers:
+       - name: c1                 # 🐳 Container 1 name
+         image: centos            # 🖼️ CentOS base image
+         command: ["/bin/bash", "-c", "sleep 15000"] # ⏳ Keeps container running
+         volumeMounts:                                    # 💾 Mount definition inside container 1
+           - name: xchange        # 🔗 References volume name defined below
+             mountPath: "/tmp/xchange" # 📁 Directory path inside container 1 where volume is mounted
+       - name: c2                 # 🐳 Container 2 name
+         image: centos            # 🖼️ CentOS base image
+         command: ["/bin/bash", "-c", "sleep 10000"] # ⏳ Keeps container running
+         volumeMounts:                                    # 💾 Mount definition inside container 2
+           - name: xchange        # 🔗 References the same shared volume name
+             mountPath: "/tmp/data" # 📁 Different directory path inside container 2 pointing to the shared storage
+     volumes:                                                   # 🗄️ Shared volume definitions for the pod
+       - name: xchange            # 🏷️ Identifier name for the shared volume block
+         emptyDir: {}             # 🔄 Temporary scratch space shared across containers in this pod
+
+ 🛠️ Commands Executed & Output Logs:
+    kubectl apply -f emptydir.yaml
+    # -> Expected Output: pod/myvolemptydir created
+    
+    kubectl exec -it myvolemptydir -c c1 -- touch /tmp/xchange/test.txt
+    kubectl exec -it myvolemptydir -c c2 -- ls /tmp/data
+    # -> Expected Output: test.txt
+
+⚠️ emptyDir Fail Case
+Ephemeral Lifecycle: If the Pod is deleted, terminated, or rescheduled, all data is permanently lost.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ 🗂️ VOLUME LABS - HOSTPATH (NODE PERSISTENCE)
+ • What is happening: We mount a directory from the underlying host node's file system directly into the container using `hostPath`.
+ 
+ • Updated Manifest Section (`hostpath.yaml`):
+   apiVersion: v1                 # ⚙️ API version for core objects
+   kind: Pod                      # 🏷️ Object type: Pod
+   metadata:
+     name: myvolhostpath          # 🏷️ Name of the hostPath pod
+   spec:
+     containers:
+       - name: testc              # 🐳 Container name
+         image: centos            # 🖼️ CentOS base image
+         command: ["/bin/bash", "-c", "sleep 15000"] # ⏳ Keeps container running
+         volumeMounts:            # 💾 Mount definition inside container
+           - name: testvolume     # 🔗 References host path volume name defined below
+             mountPath: /tmp/hostpath # 📁 Directory path inside container mapped to host node
+     volumes:
+       - name: testvolume         # 🏷️ Identifier name for hostPath volume block
+         hostPath:                # 🖥️ Direct mapping to the underlying worker node's file system
+           path: /tmp/data        # 📂 Absolute file path on the host node server
+
+ 🛠️ Commands Executed & Output Logs:
+    kubectl apply -f hostpath.yaml
+    # -> Expected Output: pod/myvolhostpath created
+    
+    kubectl exec -it myvolhostpath -- sh -c "echo 'Hello Host' > /tmp/hostpath/file.txt"
+    # Check node terminal: cat /tmp/data/file.txt
+    # -> Expected Output: Hello Host
+
+⚠️ hostPath Fail Case
+Node Dependency: Data is tied to a specific worker node. If the Pod moves to a different node, the data does not follow it. Plus, it introduces security risks and potential host disk exhaustion.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🗂️ VOLUME LABS - AWS EBS (PERSISTENT VOLUME & CLAIM)
+• What is happening: We define an AWS Elastic Block Store (EBS) PersistentVolume (PV) for cloud storage, bind it to a PersistentVolumeClaim (PVC), and mount it inside a Kubernetes Deployment container for persistent data retention.
+
+• Updated Manifest Section (`ebs-pv-pvc-deploy.yaml`):
+   apiVersion: v1                     # ⚙️ API version for core objects
+   kind: PersistentVolume             # 🏷️ Object type: PersistentVolume
+   metadata:
+     name: myebsvol                   # 🏷️ Name of the PersistentVolume
+   spec:
+     capacity:
+       storage: 1Gi                   # 💾 Storage capacity allocated
+     accessModes:
+       - ReadWriteOnce                # 🔒 Single-node read-write access
+     persistentVolumeReclaimPolicy: Recycle # ♻️ Policy when claim is released
+     awsElasticBlockStore:
+       volumeID: <ebs-volume-id>      # ☁️ AWS EBS Volume ID (e.g., vol-0123456789abcdef0)
+       fsType: ext4                   # 🗄️ File system type format
+   ---
+   apiVersion: v1                     # ⚙️ API version for core objects
+   kind: PersistentVolumeClaim        # 🏷️ Object type: PersistentVolumeClaim
+   metadata:
+     name: myebsvolclaim              # 🏷️ Name of the storage claim
+   spec:
+     accessModes:
+       - ReadWriteOnce                # 🔒 Matching access mode required
+     resources:
+       requests:
+         storage: 1Gi                 # 📦 Requested storage allocation size
+   ---
+   apiVersion: apps/v1                # ⚙️ API version for Deployment objects
+   kind: Deployment                   # 🏷️ Object type: Deployment
+   metadata:
+     name: pvdeploy                   # 🏷️ Name of the deployment
+   spec:
+     replicas: 1                      # 👥 Number of pod replicas
+     selector:                        # 🎯 Tells controller which pods to watch
+       matchLabels:
+         app: mypv
+     template:
+       metadata:
+         labels:
+           app: mypv
+       spec:
+         containers:
+           - name: shell              # 🐳 Container name
+             image: centos            # 🖼️ CentOS base image
+             command: ["bin/bash", "-c", "sleep 10000"] # ⏳ Keeps container running
+             volumeMounts:            # 💾 Mount definition inside container
+               - name: mypd           # 🔗 References volume name defined below
+                 mountPath: "/tmp/persistent" # 📁 Directory path inside container where volume is mounted
+         volumes:                     # 🗄️ Volume definitions for the pod
+           - name: mypd               # 🏷️ Identifier name for the persistent volume block
+             persistentVolumeClaim:
+               claimName: myebsvolclaim # 🎫 References the PVC name defined above
+
+🛠️ Commands Executed & Output Logs:
+   # 1. Apply the manifest containing PV, PVC, and Deployment
+   kubectl apply -f ebs-pv-pvc-deploy.yaml
+   # -> Expected Output: 
+   # persistentvolume/myebsvol created
+   # persistentvolumeclaim/myebsvolclaim created
+   # deployment.apps/pvdeploy created
+
+   # 2. Verify PersistentVolume (PV) creation and capacity
+   kubectl get pv
+   # -> Expected Output: 
+   # NAME         CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                   STORAGECLASS   AGE
+   # myebsvol     1Gi        RWO            Recycle          Bound    default/myebsvolclaim                  2m
+
+   # 3. Verify PersistentVolumeClaim (PVC) status (should show Bound)
+   kubectl get pvc myebsvolclaim
+   # -> Expected Output: 
+   # NAME            STATUS   VOLUME     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+   # myebsvolclaim   Bound    myebsvol   1Gi        RWO                           2m
+
+   # 4. Check Deployment status
+   kubectl get deploy pvdeploy
+   # -> Expected Output: 
+   # NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+   # pvdeploy   1/1     1            1           2m
+
+   # 5. Check ReplicaSet (rs) created by deployment
+   kubectl get rs
+   # -> Expected Output: 
+   # NAME                  DESIRED   CURRENT   READY   AGE
+   # pvdeploy-7b6c59d8bc   1         1         1       2m
+
+   # 6. Check running Pods to get the active pod name
+   kubectl get pods
+   # -> Expected Output: 
+   # NAME                       READY   STATUS    RESTARTS   AGE
+   # pvdeploy-7b6c59d8bc-9f8w2   1/1     Running   0          2m
+
+   # 7. Access the running container shell (Replace pod name with your active pod)
+   kubectl exec -it pvdeploy-7b6c59d8bc-9f8w2 -- /bin/bash
+   # -> Inside Container Commands & Output:
+   # [root@pvdeploy-7b6c59d8bc-9f8w2 /]# cd /tmp/persistent       # 📁 Navigate to the volume mount path
+   # [root@pvdeploy-7b6c59d8bc-9f8w2 persistent]# pwd            # 🔍 Confirm current directory
+   # /tmp/persistent
+   # [root@pvdeploy-7b6c59d8bc-9f8w2 persistent]# ls -la          # 📋 List files in mount path
+   # total 0
+   # drwxr-xr-x 2 root root 6 Oct 17 00:00 .
+   # drwxrwxrwt 3 root root 18 Oct 17 00:00 ..
+   # [root@pvdeploy-7b6c59d8bc-9f8w2 persistent]# echo "Hello from AWS EBS Persistent Storage!" > persistence-test.txt  # ✍️ Create a test file
+   # [root@pvdeploy-7b6c59d8bc-9f8w2 persistent]# cat persistence-test.txt  # 📖 Read the file contents
+   # Hello from AWS EBS Persistent Storage!
+   # [root@pvdeploy-7b6c59d8bc-9f8w2 persistent]# exit             # 🚪 Exit out of the container shell
+
+   # 8. Delete the pod to test data persistence (Deployment will automatically recreate a new one)
+   kubectl delete pod pvdeploy-7b6c59d8bc-9f8w2
+   # -> Expected Output: 
+   # pod "pvdeploy-7b6c59d8bc-9f8w2" deleted
+
+   # 9. Wait a few seconds as new pod would automatically get created with conatiner in it, then check the new pod name
+   kubectl get pods
+   # -> Expected Output: 
+   # NAME                       READY   STATUS    RESTARTS   AGE
+   # pvdeploy-7b6c59d8bc-2k4l9   1/1     Running   0          15s   <---new pod
+
+   # 10. Verify that the file survived and exists in the new pod container (Replace with new pod name)
+   kubectl exec -it pvdeploy-7b6c59d8bc-2k4l9 -- cat /tmp/persistent/persistence-test.txt
+   # -> Expected Output: 
+   # Hello from AWS EBS Persistent Storage! ✅ (Proves data persisted via EBS volume!)
+
+⚠️ PV/PVC Cloud Binding Fail Case
+Cloud Provider Dependency: The AWS EBS volume ID must exist in the correct AWS region and availability zone as the worker node. If the volume ID is invalid, missing, or already attached elsewhere, the PVC will remain in a `Pending` state, and pods attempting to mount it will fail to start.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. ⚡ emptyDir (Placed: INSIDE THE POD)
+   [ Pod ]
+   ├── [ Container 1 ] ──┐
+   └── [ Container 2 ] ──┼──> ⚡ emptyDir (Temporary scratch space)
+                         │    ❌ Fail Case: If the Pod dies or restarts, all data is permanently lost!
+
+2. 🖥️ hostPath (Placed: ON THE WORKER NODE)
+   [ Worker Node Filesystem ]
+   └── 📂 /tmp/data ──────> (Mounted directly into) ──> [ Pod / Container ]
+                          ❌ Fail Case: Tied to that specific node; if the pod moves to another node, data stays behind!
+
+3. ☁️ AWS EBS / PV (Placed: IN THE CLOUD / EXTERNAL)
+   [ AWS Cloud Storage ]
+   └── ☁️ AWS EBS Disk ──(Bound via PVC)──> [ Worker Node ] ──> [ Pod / Container ]
+                          ❌ Fail Case: PVC stays stuck in `Pending` if region/AZ is wrong or volume ID is invalid!
+
+FEATURE / LAYER                  ☁️ AWS EBS (Elastic Block Store) - RWO                               🌐 NFS (Network File System) - RWX
+------------------------------|---------------------------------------------------------------------------------------------------------
+ 🏗️ STORAGE ARCHITECTURE             • Raw block-level storage attached to an EC2 instance.           • File-level storage shared over a 
+                                     • Acts like a virtual hard drive plugged directly into a server.    network via TCP/IP protocol.
+
+ 🗺️ TOPOLOGY & PLACEMENT             [ AWS EBS Cloud Disk ]                                           [ External Network File Server ]
+                                              │                                                               │
+                                              ▼ (Bound via PVC)                                               ▼ (Shared via PVC)
+                                     [ Single Worker Node ]                                            [ Multiple Worker Nodes ]
+                                              │                                                               │
+                                              ▼                                                               ▼
+                                     [ 1 Pod / Container ]                                             [ Multiple Pods / Containers ]
+
+ 🎯 COMMON INDUSTRY USE CASES        • Production relational & NoSQL databases (PostgreSQL, MySQL).   • Content Management Systems (CMS) 
+                                     • High-performance stateful apps requiring low-latency I/O.       • Shared asset folders across pods.
+
+ 💡 REAL-WORLD DEPLOYMENT EXAMPLE    • Deploying a single **PostgreSQL stateful pod** in AWS EKS       • Running a **WordPress deployment** with 
+                                       where a dedicated database engine demands fast, unshared          3 replicas where all pods must read/write 
+                                       disk read/write operations without network overhead.              to the exact same uploaded image directory.
+
+ 🔥 WHY IT IS COMMONLY CHOSEN        • Undisputed **cloud-native standard** for persistent databases   • Allows multiple pods across different nodes 
+                                       due to native cloud integration, raw block performance,           to simultaneously share and collaborate on 
+                                       and extreme data durability (snapshots, backups).                 the exact same files and directories.
+
+ ❌ CRITICAL FAIL CASES & LIMITATIONS  • **ReadWriteOnce (RWO) Restriction:** Strictly locked to a     • **ReadWriteMany (RWX) Bottleneck:** Prone to 
+                                       single worker node. If another node attempts to mount or          network latency, concurrency file-locking 
+                                       failover while locked, attachment fails.                          conflicts, and acts as a central failure point.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🩺 HEALTHCHECK LABS - LIVENESS PROBE
+• What is happening: We configure a Liveness Probe using an `exec` command to check the health status of a container by checking if a file (`/tmp/healthy`) exists. If the command fails, Kubernetes will automatically restart the container.
+
+• Updated Manifest Section (`liveness-probe.yaml`):
+   apiVersion: v1                     # ⚙️ API version for core objects
+   kind: Pod                          # 🏷️ Object type: Pod
+   metadata:
+     labels:
+       test: liveness                 # 🏷️ Label identifier for test pods
+     name: mylivenessprobe            # 🏷️ Name of the liveness probe pod
+   spec:
+     containers:
+       - name: liveness               # 🐳 Container name
+         image: ubuntu                # 🖼️ Ubuntu base image
+         args:
+           - /bin/sh
+           - -c
+           - touch /tmp/healthy; sleep 1000 # ⏳ Creates health file on start and keeps running
+         livenessProbe:               # 🔍 Healthcheck configuration block
+           exec:
+             command:
+               - cat                  # 🛠️ Command to run inside container
+               - /tmp/healthy         # 📄 Target file path being checked
+           initialDelaySeconds: 5     # ⏱️ Wait 5 seconds before running the probe for the first time
+           periodSeconds: 5           # 🔄 Run the probe every 5 seconds thereafter
+           timeoutSeconds: 30         # ⏳ Maximum seconds to wait for the probe command to finish
+
+🛠️ Commands Executed & Output Logs:
+   kubectl apply -f liveness-probe.yaml
+   # -> Expected Output: pod/mylivenessprobe created
+   
+   kubectl describe pod mylivenessprobe
+   # -> Expected Output: Inspect events and container restart count under Liveness probe status
+
+⚠️ Liveness Probe Fail Case
+Infinite Restart Loop (`CrashLoopBackOff`): If the health file is accidentally deleted (e.g., via `rm /tmp/healthy`) or the application becomes unresponsive, the probe command will exit with a non-zero status code. Kubernetes will repeatedly kill and restart the container, leading to service disruption.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🗂️ KUBERNETES LABS - CONFIGMAPS (VOLUME MOUNT & ENVIRONMENT VARIABLES) 
+• What is happening: We create a configuration file (`sample.conf`), ingest it into a Kubernetes ConfigMap, and demonstrate two common consumption patterns: mounting the configuration as a file inside a Pod volume, and injecting it directly as an environment variable into a container.
+
+[ Local File: sample.conf ]
+                                      │  Content example: "i am good"
+                                      ▼
+                     [ kubectl create configmap mymap ]
+                                      ▼
+                           { ConfigMap: "mymap" }
+                            /                    \
+           ┌──────────────────────────────┐    ┌──────────────────────────────┐
+           |     PART 1: Volume Mount     |    |   PART 2: Environment Var    |
+           | (Mounts the config file      |    | (Reads the file content      |
+           |  into a container directory) |    |  directly from the backend)  |
+           └──────────────────────────────┘    └──────────────────────────────┘
+                           ▼                                ▼
+           +------------------------------+    +------------------------------+
+           |       Pod: myvolconfig       |    |       Pod: myenvconfig       |
+           |   Container: c1              |    |   Container: c1              |
+           |   📁 Mounted at:             |    |   🌐 Injected as:           |
+           |   /tmp/config/sample.conf    |    |   MYENV = "i am good"        |
+           +------------------------------+    +------------------------------+
+
+### Part 1: ConfigMap via Volume Mount
+
+#### 📄 Manifest (`deployconfigmap.yml`)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myvolconfig
+spec:
+  containers:
+    - name: c1
+      image: centos
+      command: ["/bin/bash", "-c", "while true; do echo Technical-Guftgu; sleep 5 ; done"]
+      volumeMounts:
+        - name: testconfigmap
+          mountPath: "/tmp/config"    # 📁 The config files will be mounted as ReadOnly by default here
+  volumes:
+    - name: testconfigmap
+      configMap:
+        name: mymap    # 🔗 This matches the config map name created in the first step
+        items:
+          - key: sample.conf
+            path: sample.conf
+
+#### 🛠️ Commands Executed & Output Logs:
+   # 1. Create the sample configuration file locally
+   echo "i am good" > sample.conf
+   # -> Expected Output: (No output, file created)
+
+   # 2. Create a ConfigMap named 'mymap' from the sample file
+   kubectl create configmap mymap --from-file=sample.conf
+   # -> Expected Output: 
+   # configmap/mymap created
+
+   # 3. View the list of ConfigMaps
+   kubectl get configmap
+   # -> Expected Output: 
+   # NAME             DATA   AGE
+   # kube-root-ca.crt 1      5m
+   # mymap            1      10s
+
+   # 4. Describe the ConfigMap to inspect its keys and contents
+   kubectl describe configmap mymap
+   # -> Expected Output: 
+   # Name:         mymap
+   # Namespace:    default
+   # Labels:       <none>
+   # Annotations:  <none>
+   # 
+   # Data
+   # ====
+   # sample.conf:
+   # ----
+   # i am good
+
+   # 5. Apply the pod manifest that mounts the ConfigMap as a volume
+   kubectl apply -f deployconfigmap.yml
+   # -> Expected Output: 
+   # pod/myvolconfig created
+
+   # 6. Verify the Pod is running
+   kubectl get pods
+   # -> Expected Output: 
+   # NAME          READY   STATUS    RESTARTS   AGE
+   # myvolconfig   1/1     Running   0          15s
+
+   # 7. Access the running container shell to inspect the mounted configuration file
+   kubectl exec -it myvolconfig -- /bin/bash
+   # -> Inside Container Commands & Output:
+   # [root@myvolconfig /]# cd /tmp/config        # 📁 Navigate to the volume mount path
+   # [root@myvolconfig config]# pwd              # 🔍 Confirm current directory
+   # /tmp/config
+   # [root@myvolconfig config]# ls -l            # 📋 List files in mount path
+   # total 0
+   # lrwxrwxrwx 1 root root 17 Oct 17 00:00 sample.conf -> ..data/sample.conf
+   # [root@myvolconfig config]# cat sample.conf  # 📖 Read the mounted config file contents
+   # i am good
+   # [root@myvolconfig config]# exit             # 🚪 Exit out of the container shell
+
+   # 8. Clean up the local manifest file
+   rm deployconfigmap.yml
+ 
+### Part 2: ConfigMap via Environment Variable
+
+#### 📄 Manifest (`deployenv.yml`)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myenvconfig
+spec:
+  containers:
+    - name: c1
+      image: centos
+      command: ["/bin/bash", "-c", "while true; do echo Technical-Guftgu; sleep 5 ; done"]
+      env:
+        - name: MYENV          # 🏷️ Environment variable name in which the value is stored
+          valueFrom:
+            configMapKeyRef:
+              name: mymap      # 🔗 Name of the ConfigMap created earlier
+              key: sample.conf # 🔑 Key inside the ConfigMap to expose
+
+#### 🛠️ Commands Executed & Output Logs:
+   # 1. Apply the manifest to create the pod with the environment variable
+   kubectl apply -f deployenv.yml
+   # -> Expected Output: 
+   # pod/myenvconfig created
+
+   # 2. Verify the Pod status
+   kubectl get pods
+   # -> Expected Output: 
+   # NAME          READY   STATUS    RESTARTS   AGE
+   # myenvconfig   1/1     Running   0          10s
+
+   # 3. Access the container shell to check the environment variables
+   kubectl exec -it myenvconfig -- /bin/bash
+   # -> Inside Container Commands & Output:
+   # [root@myenvconfig /]# env                   # 📋 List all environment variables
+   # ...
+   # MYENV=i am good                             # ✅ ConfigMap value correctly injected as env var
+   # ...
+   # [root@myenvconfig /]# echo $MYENV           # 🔍 Print the specific environment variable
+   # i am good
+   # [root@myenvconfig /]# exit                  # 🚪 Exit out of the container shell
+
+   # 4. Clean up the local manifest file
+   rm deployenv.yml
+
+
+🗂️ KUBERNETES LABS - SECRETS (VOLUME MOUNT)
+• What is happening: We create confidential credential files (username.txt and password.txt), bundle them into a Kubernetes Secret object, and demonstrate the secure volume mount pattern to make them available as files inside a Pod container.
+
+ ┌────────────────────────┐      ┌─────────────────────────┐      ┌───────────────────────┐
+ │   Local Files          │      │  Kubernetes Secret      │      │  Pod Volume Mount     │
+ │   username.txt         │ ───> │  mysecret               │ ───> │  myvolsecret          │
+ │   password.txt         │      │  (Opaque / Encoded)     │      │  📁 /tmp/mysecrets/   │
+ └────────────────────────┘      └─────────────────────────┘      └───────────────────────┘
+
+# 1. Create the secret credential files locally
+echo 'root' > username.txt
+echo 'mypassword123' > password.txt
+# -> Expected Output: (No output, files created locally) | if cmd 'ls' the file will show
+
+# 2. Create a generic Secret named 'mysecret' from both files
+kubectl create secret generic mysecret --from-file=username.txt --from-file=password.txt
+# -> Expected Output: 
+# secret/mysecret created
+
+# 3. View the list of Secrets
+kubectl get secret
+# -> Expected Output: 
+# NAME                  TYPE                                  DATA   AGE
+# default-token-abcde   kubernetes.io/service-account-token   3      5m
+# mysecret              Opaque                                2      10s
+
+# 4. Describe the Secret to inspect its metadata and keys
+kubectl describe secret mysecret
+# -> Expected Output: 
+# Name:         mysecret
+# Namespace:    default
+# Labels:       <none>
+# Annotations:  <none>
+# 
+# Type:         Opaque
+# 
+# Data
+# ====
+# password.txt:  15 bytes
+# username.txt:  5 bytes
+
+# 5. Create the Pod manifest (`deploysecret.yml`)
+cat << 'EOF' > deploysecret.yml
+apiVersion: v1                 # ⚙️ API version for core objects
+kind: Pod                      # 🏷️ Object type: Pod
+metadata:
+  name: myvolsecret            # 🏷️ Name of the pod
+spec:
+  containers:
+    - name: c1                 # 🐳 Container name
+      image: centos            # 🖼️ CentOS base image
+      command: ["/bin/bash", "-c", "while true; do echo Technical-Guftgu; sleep 5 ; done"] # ⏳ Keeps container running
+      volumeMounts:            # 💾 Mount definition inside container
+        - name: testsecret     # 🔗 References volume name defined below
+          mountPath: "/tmp/mysecrets"    # 📁 Directory path inside container where secrets are mounted (ReadOnly by default)
+  volumes:                     # 🗄️ Volume definitions for the pod
+    - name: testsecret         # 🏷️ Identifier name for the volume block
+      secret:
+        secretName: mysecret   # 🎫 References the Kubernetes Secret name created earlier
+EOF
+
+# 6. Apply the pod manifest that mounts the Secret as a volume
+kubectl apply -f deploysecret.yml
+# -> Expected Output: 
+# pod/myvolsecret created
+
+# 7. Verify the Pod is running
+kubectl get pods
+# -> Expected Output: 
+# NAME          READY   STATUS    RESTARTS   AGE
+# myvolsecret   1/1     Running   0          15s
+
+# 8. Access the running container shell to inspect the mounted secret files
+kubectl exec -it myvolsecret -- /bin/bash
+# --- Inside Container Commands & Output ---
+# [root@myvolsecret /]# cd /tmp              # 📁 Navigate to tmp directory
+# [root@myvolsecret tmp]# cd mysecrets       # 📂 Move into the mounted secrets directory
+# [root@myvolsecret mysecrets]# ls -l        # 📋 List files in mount path
+# total 0
+# lrwxrwxrwx 1 root root 17 Oct 17 00:00 password.txt -> ..data/password.txt
+# lrwxrwxrwx 1 root root 17 Oct 17 00:00 username.txt -> ..data/username.txt
+# [root@myvolsecret mysecrets]# cat username.txt  # 📖 Read the username secret file
+# root
+# [root@myvolsecret mysecrets]# cat password.txt  # 📖 Read the password secret file
+# mypassword123
+# [root@myvolsecret mysecrets]# exit         # 🚪 Exit out of the container shell
+# ------------------------------------------
+
+# 9. Clean up local credential files and the manifest file
+rm username.txt password.txt deploysecret.yml
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ ----- 🏛️ Conceptual Foundation: Namespaces, Resource Quotas & Limit Ranges -----
+
+# Why use Namespaces? 
+# They provide virtual cluster partitioning so multiple teams can use identical resource names (e.g., 'testpod') without naming collisions.
+
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │                         CLUSTER (The Whole College)                     │
+# │                                                                         │
+# │  ┌────────────────────────┐      ┌─────────────────────────┐            │
+# │  │ Namespace: dev         │      │ Namespace: prod         │            │
+# │  │ (CSE Department)       │      │ (ECE Department)        │            │
+# │  │ 🔸 Isolated Pods       │      │ 🔸 Isolated Pods        │            │
+# │  │ 🔸 ResourceQuotas      │      │ 🔸 ResourceQuotas       │            │
+# │  └────────────────────────┘      └─────────────────────────┘            │
+# │                                                                         │
+# │  ⚡ CLUSTER-LEVEL RESOURCES (Not inside any namespace):                 │
+# │     • Nodes    • Persistent Volumes (PVs)    • ClusterRoles             │
+# └─────────────────────────────────────────────────────────────────────────┘
+
+# 🚀 NAMESPACES (The College Campus & Department Analogy)
+# ------------------------------------------------------------------------------
+# 🌐 KUBERNETES CLUSTER (The Whole College Campus)
+#    ├── ⚡ CLUSTER-LEVEL RESOURCES (Shared infrastructure outside any department):
+#    │      • Nodes (Physical/Virtual Server hardware)
+#    │      • Persistent Volumes / PVs (Shared network storage disks)
+#    │      • ClusterRoles / ClusterRoleBindings (Global cluster permissions)
+#    │
+#    ├── 🏢 Namespace: "dev" (CSE Department)
+#    │      • 🔸 Isolated Pods & Workloads
+#    │      • 🔸 ResourceQuotas & LimitRanges
+#    │
+#    └── 🏢 Namespace: "prod" (ECE Department)
+#           • 🔸 Isolated Pods & Workloads
+#           • 🔸 ResourceQuotas & LimitRanges
+
+# ------------------------------------------------------------------------------
+# LAB PART 1: NAMESPACES & ISOLATION CLI EXECUTION
+# ------------------------------------------------------------------------------
+
+#### 🛠️ Commands Executed & Output Logs:
+
+# Step 1: Check pods in the pre-existing 'default' namespace
+kubectl get pods
+# -> Expected Output: 
+# No resources found in default namespace.
+# 💡 What happens: Lists all running pods inside the default scope.
+
+# View all built-in namespaces in the cluster
+kubectl get namespace
+# -> Expected Output: 
+# NAME              STATUS   AGE
+# default           Active   5d
+# kube-system       Active   5d
+# kube-public       Active   5d
+# kube-node-lease   Active   5d
+# 💡 What happens: Displays built-in system namespaces.
+
+# Step 2: Create the namespace manifest (`devns.yml`)
+cat << 'EOF' > devns.yml
+apiVersion: v1
+kind: Namespace
+metadata:
+   name: dev
+   labels:
+     name: dev
+EOF
+
+# Apply namespace manifest to cluster
+kubectl apply -f devns.yml
+# -> Expected Output: 
+# namespace/dev created
+# 💡 What happens: 🏢 Creates a brand new isolated virtual partition named 'dev'.
+
+# Step 3: Create a test Pod manifest (`pod.yml`)
+cat << 'EOF' > pod.yml
+kind: Pod
+apiVersion: v1
+metadata:
+  name: testpod
+spec:
+  containers:
+    - name: c00
+      image: ubuntu
+      command: ["/bin/bash", "-c", "while true; do echo Technical Guftgu; sleep 5 ; done"]
+  restartPolicy: Never
+EOF
+
+# Step 4: Contrast applying to default vs 'dev' namespace
+# ┌────────────────────────┐      ┌─────────────────────────┐
+# │ kubectl apply          │ ───> │ Namespace: default      │
+# │ (without -n flag)      │      │ Pod: testpod            │
+# └────────────────────────┘      └─────────────────────────┘
+# ┌────────────────────────┐      ┌─────────────────────────┐
+# │ kubectl apply -n dev   │ ───> │ Namespace: dev          │
+# │ (with -n dev flag)     │      │ Pod: testpod            │
+# └────────────────────────┘      └─────────────────────────┘
+
+# Apply to default namespace without `-n`
+kubectl apply -f pod.yml
+# -> Expected Output: 
+# pod/testpod created
+# 💡 What happens: 📦 Deploys 'testpod' into the 'default' namespace.
+
+# Clean up default pod to prevent naming conflicts
+kubectl delete -f pod.yml
+# -> Expected Output: 
+# pod "testpod" deleted
+
+# Now apply directly into the 'dev' namespace using `-n dev`
+kubectl apply -f pod.yml -n dev
+# -> Expected Output: 
+# pod/testpod created
+# 💡 What happens: 📦 Deploys 'testpod' securely inside the isolated 'dev' namespace.
+
+# Verify pods across namespaces
+kubectl get pods            # Checks 'default' namespace (empty)
+kubectl get pods -n dev     # Checks 'dev' namespace -> 'testpod' is running!
+# -> Expected Output (for get pods -n dev):
+# NAME      READY   STATUS    RESTARTS   AGE
+# testpod   1/1     Running   0          10s
+
+# Correct deletion in dev namespace (deleting without `-n dev` fails if object is in dev)
+kubectl delete -f pod.yml -n dev
+# -> Expected Output: 
+# pod "testpod" deleted
+
+# Step 5: Managing default context namespace (Avoid typing `-n` every time)
+kubectl config set-context $(kubectl config current-context) --namespace=dev
+# -> Expected Output: 
+# Context "kubernetes-admin@kubernetes" modified.
+# 💡 What happens: ⚙️ Alters local kubeconfig context so future commands target 'dev' by default.
+
+# Verify current context namespace configuration
+kubectl config view | grep namespace:
+# -> Expected Output: 
+# namespace: dev
+
+kubectl get pods            # Automatically queries 'dev' namespace now!
+
+# Switch context back to default for clean lab state
+kubectl config set-context $(kubectl config current-context) --namespace=default
+
+# Cleanup local manifest files
+rm devns.yml pod.yml
+
+
+# 🚀 RESOURCE QUOTAS (Marriage Party System vs. Restaurant System)
+# ------------------------------------------------------------------------------
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                     RESOURCE QUOTAS: MARRIAGE VS RESTAURANT SYSTEM                      │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│  1️⃣ WITHOUT RESOURCE QUOTA: The Marriage Party System                                   │
+│  • Open buffet with zero restrictions. Anyone can take as much as they want.            │
+│  • One greedy guest (or memory-leaking app) can gobble up all cluster resources.        │
+│                                                                                         │
+│     [ 🍢 Cluster Buffet ] ────( All Resources Gobbled! )────► 🏃‍♂️ Greedy App (Pod)      │
+│                                                                       │                 │
+│                                                        💥 OOMKilled & Starvation!       │
+│                                                                       │                 │
+│                                                        ❌ Other Pods Crash & Fail!      │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│  2️⃣ WITH RESOURCE QUOTA: The Restaurant System                                          │
+│  • Strict limits enforced per namespace (e.g., max 400m CPU / 400Mi Memory).            │
+│  • If an app tries to exceed the token limit, Kubernetes instantly blocks creation.     │
+│                                                                                         │
+│     [ 💳 Quota Counter ] ─────( Max 400m Hard Cap )──► 🛑 Exceeds Quota? Blocked!      │
+│                                                                       │                 │
+│                                                        ✅ Balanced Consumption          │
+│                                                                       │                 │
+│                                                        🛡️ Stable & Protected Cluster!   │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+# CRUCIAL RULES: REQUESTS VS LIMITS (CPU, Memory, Storage)
+# ------------------------------------------------------------------------------
+# 📊 COMPUTE RESOURCE BEHAVIOR MATRIX
+#  1️⃣ [ Request DEFINED + Limit DEFINED ]
+#      ├── Request: 100m CPU (Guaranteed minimum reservation)
+#      ├── Limit:   200m CPU (Absolute maximum ceiling)
+#      └── 🟢 STATUS: No Problem! Fully specified, safe, and predictable.
+# 
+#  2️⃣ [ Request OMITTED + Limit DEFINED ]
+#      ├── Request: (Not specified) ──► 🔄 Kubernetes automatically sets Request = Limit
+#      ├── Limit:   200m CPU
+#      └── 🟡 STATUS: Safe, but forces container to reserve full limit amount right at start.
+# 
+#  3️⃣ [ Request DEFINED + Limit OMITTED ]
+#      ├── Request: 100m CPU
+#      ├── Limit:   (Not specified) ──► ⚠️ Limit does NOT equal Request!
+#      └── 🔴 STATUS: Unbounded! Container can consume all available node CPU/RAM,
+#                     risking node exhaustion unless a LimitRange is enforced.
+
+# ------------------------------------------------------------------------------
+# LAB PART 2: RESOURCE QUOTAS & LIMIT RANGES CLI EXECUTION
+# ------------------------------------------------------------------------------
+
+#### 🛠️ Commands Executed & Output Logs:
+
+# Ensure 'dev' namespace exists for this lab
+kubectl create namespace dev --dry-run=client -o yaml | kubectl apply -f -
+# -> Expected Output: 
+# namespace/dev configured
+
+# Step 1: Create a Pod with explicit resource requests and limits (`podresources.yml`)
+cat << 'EOF' > podresources.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resources
+spec:
+  containers:
+    - name: resource
+      image: centos
+      command: ["/bin/bash", "-c", "while true; do echo Technical-Guftgu; sleep 5 ; done"]
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "100m"
+        limits:
+          memory: "128Mi"
+          cpu: "200m"
+EOF
+
+kubectl apply -f podresources.yml -n dev
+# -> Expected Output: 
+# pod/resources created
+# 💡 What happens: 📦 Deploys pod with guaranteed requests and maximum limits.
+
+kubectl describe pod resources -n dev
+# -> Expected Output: 
+# Name:         resources
+# Namespace:    dev
+# Containers:
+#   resource:
+#     Limits:
+#       cpu:     200m
+#       memory:  128Mi
+#     Requests:
+#       cpu:     100m
+#       memory:  64Mi
+# 💡 What happens: 🔍 Inspects allocated CPU/memory settings inside the pod.
+
+kubectl delete -f podresources.yml -n dev
+rm podresources.yml
+
+# Step 2: Create a ResourceQuota to cap compute usage (`resourcequota.yml`)
+cat << 'EOF' > resourcequota.yml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+   name: myquota
+spec:
+  hard:
+    limits.cpu: "400m"
+    limits.memory: "400Mi"
+    requests.cpu: "200m"
+    requests.memory: "200Mi"
+EOF
+
+kubectl apply -f resourcequota.yml -n dev
+# -> Expected Output: 
+# resourcequota/myquota created
+# 💡 What happens: 💳 Sets up strict restaurant-style billing/rationing limits on the 'dev' namespace.
+
+# Step 3: Create a Deployment that exceeds the ResourceQuota (`testpod.yml`)
+# (3 replicas * 200m CPU requested = 600m total CPU, which exceeds quota limit of 200m!)
+cat << 'EOF' > testpod.yml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: deployments
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      objtype: deployment
+  template:
+    metadata:
+      name: testpod8
+      labels:
+        objtype: deployment
+    spec:
+      containers:
+        - name: c00
+          image: ubuntu
+          command: ["/bin/bash", "-c", "while true; do echo Technical-Guftgu; sleep 5 ; done"]
+          resources:
+            requests:
+              cpu: "200m"
+EOF
+
+kubectl apply -f testpod.yml -n dev
+# -> Expected Output: 
+# Error from server (Forbidden): error when creating "testpod.yml": pods "deployments-..." is forbidden: exceeded quota: myquota, requested: requests.cpu=600m, used: 0m, limited: 200m
+# 💡 What happens: 🛑 BLOCKED by Quota! Kubernetes rejects creation because 600m > 200m limit.
+
+# Clean up quota and deployment test manifest
+kubectl delete -f resourcequota.yml -n dev
+kubectl delete -f testpod.yml -n dev
+rm resourcequota.yml testpod.yml
+
+# Step 4: Enforcing Defaults using LimitRange (`cpudefault.yml`)
+cat << 'EOF' > cpudefault.yml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-limit-range
+spec:
+  limits:
+    - default:
+        cpu: 1
+      defaultRequest:
+        cpu: 0.5
+      type: Container
+EOF
+
+kubectl apply -f cpudefault.yml -n dev
+# -> Expected Output: 
+# limitrange/cpu-limit-range created
+# 💡 What happens: ⚙️ Configures default request (0.5 CPU) and limit (1 CPU) injection for unconfigured pods.
+
+# Test pod without resource specification
+cat << 'EOF' > pod.yml
+kind: Pod
+apiVersion: v1
+metadata:
+  name: testpod
+spec:
+  containers:
+    - name: c00
+      image: ubuntu
+      command: ["/bin/bash", "-c", "while true; do echo Technical Guftgu; sleep 5 ; done"]
+  restartPolicy: Never
+EOF
+
+kubectl apply -f pod.yml -n dev
+kubectl describe pod testpod -n dev  
+# -> Expected Output: 
+# Containers:
+#   c00:
+#     Limits:
+#       cpu:  1
+#     Requests:
+#       cpu:  500m
+# 💡 What happens: 🔍 LimitRange automatically injects default request (0.5 CPU) & limit (1 CPU)!
+
+kubectl delete -f pod.yml -n dev
+
+# Step 5: Testing Limit vs Request auto-assignment behavior
+
+# Test pod specifying ONLY limits (`cpu2.yml`)
+# Note: If limit is defined but request is omitted, Kubernetes automatically sets request equal to limit.
+cat << 'EOF' > cpu2.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: default-cpu-demo-2
+spec:
+  containers:
+    - name: default-cpu-demo-2-ctr
+      image: nginx
+      resources:
+        limits:
+          cpu: "1"
+EOF
+
+kubectl apply -f cpu2.yml -n dev
+kubectl describe pod default-cpu-demo-2 -n dev
+# -> Expected Output: 
+# Containers:
+#   default-cpu-demo-2-ctr:
+#     Limits:
+#       cpu:  1
+#     Requests:
+#       cpu:  1
+# 💡 What happens: 🔄 Request automatically becomes 1 CPU (equal to the specified limit).
+kubectl delete -f cpu2.yml -n dev
+rm cpu2.yml
+
+# Test pod specifying ONLY requests (`cpu3.yml`)
+# Note: Request is explicitly 0.75 CPU, and limit falls back to the LimitRange default (1 CPU).
+cat << 'EOF' > cpu3.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: mycontainer
+      image: nginx
+      resources:
+        requests:
+          cpu: "0.75"
+EOF
+
+kubectl apply -f cpu3.yml -n dev
+kubectl describe pod mypod -n dev
+# -> Expected Output: 
+# Containers:
+#   mycontainer:
+#     Limits:
+#       cpu:  1
+#     Requests:
+#       cpu:  750m
+# 💡 What happens: ⚡ Request is 0.75 CPU (explicit), and limit takes the default of 1 CPU from LimitRange.
+kubectl delete -f cpu3.yml -n dev
+
+# Final cleanup of lab files and namespace
+rm cpu3.yml cpudefault.yml pod.yml
+kubectl delete namespace dev
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+🗂️ KUBERNETES MASTER LAB NOTEBOOK: RESOURCE QUOTAS, HPA, JOBS, CRONJOBS, INIT CONTAINERS & LIFECYCLES
+
+## 1. 🛑 RESOURCE QUOTAS & DEFAULT RANGES
+### 📌 Definition
+* **Resource Quota:** A cluster-level object used to restrict aggregate resource consumption (CPU, memory, storage, and pod counts) per namespace.
+* **Default Range (LimitRange):** A mechanism that enforces default resource request and limit values for containers running inside a namespace if the container's YAML manifest omits resource definitions.
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   UNDERSTANDING RESOURCE LIMITS: PURE KUBERNETES VS MINIKUBE                                      │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│  [ SCENARIO A: PURE KUBERNETES (Standard Server / Laptop Cluster) ]                                                               │
+│                                                                                                                                   │
+│    Your YAML File                        Cluster Behavior                                                                         │
+│   ┌──────────────────┐                                                                                                            │
+│   │ apiVersion: v1   │                   • NO default resource ranges or limits exist out-of-the-box.                             │
+│   │ kind: Pod        │ ───────────────►  • If you omit CPU/Memory limits in your YAML, your container runs completely UNBOUNDED.      │
+│   │ spec: ...        │                   • Risk: A runaway or leaky app can consume 100% of node resources, causing starvation.     │
+│   └──────────────────┘                                                                                                            │
+├───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│  [ SCENARIO B: MINIKUBE / TUTORIAL CLUSTERS (Invisible Background Rules) ]                                                        │
+│                                                                                                                                   │
+│    Your YAML File                        Cluster Behavior (Hidden Settings)                                                       │
+│   ┌──────────────────┐                   ┌──────────────────────────────────┐                                                     │
+│   │ apiVersion: v1   │                   │ LimitRange / ResourceQuota       │                                                     │
+│   │ kind: Pod        │ ───────────────►  │ (Pre-configured by creator)      │ ──► Automatically injects default limits            │
+│   │ spec: ...        │                   └──────────────────────────────────┘     into your pod request (e.g., 500m limit)        │
+│   │ (No limits!)     │                   • Why did your container get limits? It wasn't written in your YAML file!                │
+│   └──────────────────┘                   • The cluster's admission webhook intercepted your request and forced those rules.         │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+### 📄 Example Manifest (`limit-range.yml`)
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-resource-limits # 🏷️ Unique name for the LimitRange object in the namespace
+spec:
+  limits:
+  - default:
+      cpu: 500m
+      memory: 512Mi     # ⚙️ Default resource limits assigned if container YAML lacks specifications
+    defaultRequest:
+      cpu: 200m
+      memory: 256Mi     # ⚙️ Default resource requests allocated when scheduling pods without limits
+    type: Container     # 🎯 Applies these constraint rules to individual containers
+
+### 📦 Side-by-Side Comparison: What happens if limits and requests are NOT specified? (Expanded Box Drawing)
+┌──────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────┐
+│                WITHOUT LimitRange (Pure K8s)                 │           WITH LimitRange (Configured Cluster)               │
+├──────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ MANIFEST:                                                    │ MANIFEST:                                                    │
+│ apiVersion: v1                                               │ apiVersion: v1                                               │
+│ kind: Pod                                                    │ kind: LimitRange                                             │
+│ metadata:                                                    │ metadata:                                                    │
+│   name: myapp                                                │   name: cpu-limits                                           │
+│ spec:                                                        │ spec:                                                        │
+│   containers:                                                │   limits:                                                    │
+│   - name: c1                                                 │   - default: {cpu: 500m, memory: 512Mi}                      │
+│     image: nginx                                             │     defaultRequest: {cpu: 200m, mem: 256Mi}                  │
+│     # (No resources specified!)                              │     type: Container                                          │
+├──────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ WILL IT RUN?                                                 │ WILL IT RUN?                                                 │
+│ ✅ YES, it runs instantly.                                   │ ✅ YES, it runs successfully.                                │
+├──────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ ASSIGNED CPU / MEMORY:                                       │ ASSIGNED CPU / MEMORY:                                       │
+│ ⚠️ Unbounded / Unlimited.                                    │ 🔒 Automatically Injected.                                   │
+│ The container can consume 100% of the node's CPU and memory  │ The cluster's admission webhook intercepts the request and   │
+│ if needed, risking node starvation.                          │ injects cpu: 200m request and cpu: 500m limit automatically. │
+└──────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────┘
+
+### 🛠️ Commands Executed & Output Logs:
+# 1. Apply the LimitRange to enforce default constraints on the namespace
+kubectl apply -f limit-range.yml
+# -> Expected Output:
+# limitrange/cpu-resource-limits created
+
+# 2. Describe the namespace to verify the active LimitRange settings
+kubectl describe limitrange cpu-resource-limits
+# -> Expected Output:
+# Name:         cpu-resource-limits
+# Namespace:    default
+# Type          Resource  Min  Max  Default Request  Default Limit  Max Limit/Request Ratio
+# ----          --------  ---  ---  ---------------  -------------  -----------------------
+# Container     cpu       -    -    200m             500m           -
+# Container     memory    -    -    256Mi            512Mi          -
+
+# 3. Clean up the LimitRange object when testing is complete
+kubectl delete -f limit-range.yml
+# -> Expected Output:
+# limitrange/cpu-resource-limits deleted
+ 
+## 2. 📈 HORIZONTAL POD AUTOSCALER (HPA) & METRICS SERVER
+* **📊 Metrics Server:** Collects resource metrics (CPU/Memory) from Kubelets across the cluster so autoscalers can read them.
+
+### 🔑 Step-by-Step Metrics Server Installation & Configuration (Certificate Fix)
+* **Step 1:** Download the official metrics-server manifest:
+  `wget -O metricserver.yml https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml`
+* **Step 2:** Open `metricserver.yml` and locate the `Deployment` object. Inside the container arguments (`args`), add `--kubelet-insecure-tls` to bypass self-signed certificate errors in development/Minikube environments:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-server
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: metrics-server
+        image: registry.k8s.io/metrics-server/metrics-server:v0.6.4
+        args:
+          - --cert-dir=/tmp
+          - --secure-port=4443
+          - --kubelet-insecure-tls   # 🛠️ <-- ADD THIS LINE HERE TO AVOID CERTIFICATE ERRORS
+          - --metric-resolution=15s
+
+* **Step 3:** Apply the modified manifest to your cluster:
+  `kubectl apply -f metricserver.yml`
+
+### 📐 Text Drawing Process of HPA (Expanded Box Breakdown)
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       HPA EXECUTION & METRICS FLOW                                          │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ [ 1. KUBELET / PODS ] ===> Continuously tracks and measures container CPU & Memory usage                      │
+│            │                                                                                                │
+│            │ (Scrapes resource metrics every 15 seconds)                                                    │
+│            ▼                                                                                                │
+│ [ 2. METRICS SERVER ] ===> Aggregates node & pod metrics centrally for the cluster control plane API          │
+│            │                                                                                                │
+│            │ (Polls Metrics Server API evaluation loop every 15 seconds)                                    │
+│            ▼                                                                                                │
+│ [ 3. HPA CONTROLLER ] ===> Compares Current CPU Utilization percentage against Target Threshold (e.g., 20%) │
+│            │                                                                                                │
+│            ├───► [ CPU > Target% ] ===> 🚀 SCALES UP   : Dynamically instructs deployment to create replicas│
+│            │                                                                                                │
+│            └───► [ CPU < Target% ] ===> ⏱️ COOLDOWN   : Waits default 5-min window ===> 📉 SCALES DOWN     │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+* **⏱️ Cooldown Period:** A built-in delay window (default 5 minutes) after a scale-down event before the HPA can trigger another scale-down action. This prevents rapid flapping (bouncing replicas up and down due to short traffic spikes).
+ 
+## 3. 🖥️ HPA LAB & TWO-TERMINAL SIMULATION
+### 📄 Manifest (`deployhpa.yml`)
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+   name: mydeploy # 🏷️ Deployment name tracked by HPA
+spec:
+   replicas: 1
+   selector:
+    matchLabels:
+      name: deployment
+   template:
+      metadata:
+        name: testpod8
+        labels:
+          name: deployment
+      spec:
+       containers:
+         - name: c00
+           image: httpd
+           ports:
+             - containerPort: 80
+           resources:
+             limits:
+               cpu: 500m
+             requests:
+               cpu: 200m # 💡 Required resource request baseline for HPA calculation
+
+### 🛠️ Commands Executed & Output Logs:
+# 1. Apply the deployment manifest
+kubectl apply -f deployhpa.yml
+# -> Expected Output:
+# deployment.apps/mydeploy created
+
+# 2. Set up the Horizontal Pod Autoscaler targeting 20% average CPU utilization
+kubectl autoscale deployment mydeploy --cpu-percent=20 --min=1 --max=10
+# -> Expected Output:
+# horizontalpodautoscaler.autoscaling/mydeploy autoscaled
+
+### 🖥️ Two-Terminal Simulation: Full Expanded Box Drawing Breakdown
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                           TWO-TERMINAL SIMULATION                                           │
+├──────────────────────────────────────────┬──────────────────────────────────────────────────────────────────┤
+│ TERMINAL 1 (Monitoring)                  │ TERMINAL 2 (Load Generator)                                      │
+├──────────────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│ run: `watch kubectl get all`             │ run: `kubectl exec -it <pod-name> -- /bin/bash`                  │
+│                                          │                                                                  │
+│ 👁️ Continuously watches cluster state    │ 💻 Enters container interactive shell                            │
+│    every 2 seconds:                      │                                                                  │
+│    - NAME      READY   STATUS   RESTARTS │ run: `apt update`                                                │
+│    - mydeploy  1/1     Running  0        │                                                                  │
+├──────────────────────────────────────────┴──────────────────────────────────────────────────────────────────┤
+│ 🔄 STEP-BY-STEP PROCESS BEHIND THE SCENES & TIMED PROGRESSION:                                              │
+│                                                                                                             │
+│ [ T = 0s ] INITIAL STATE (Load = 0%)                                                                        │
+│ - Terminal 1 shows 1 running pod (`mydeploy-79b8c548d-abcde`).                                              │
+│ - HPA targets 20% CPU utilization with 1 min and 10 max replicas.                                           │
+│                                                                                                             │
+│ [ T = 15s ] LOAD GENERATION (Terminal 2)                                                                    │
+│ - You execute `apt update` inside the container shell in Terminal 2.                                        │
+│ - The container launches heavy package index file downloads and compilations, sharply driving up CPU usage. │
+│                                                                                                             │
+│ [ T = 20s ] RESOURCE SHARING & SPIKE DETECTION                                                              │
+│ - Container resource sharing allows this process to utilize CPU shares up to its configured limits (500m).    │
+│ - The Metrics Server scrapes Kubelet and detects that container CPU utilization has spiked to 85%.          │
+│                                                                                                             │
+│ [ T = 30s ] AUTOSCALING ACTION & VISIBLE RESULT                                                             │
+│ - The HPA Controller calculates that additional replicas are required.                                      │
+│ - In Terminal 1 (`watch kubectl get all`), you instantly see new pods spawning (`ContainerCreating`):       │
+│   NAME                           READY   STATUS              RESTARTS                                       │
+│   pod/mydeploy-79b8c548d-abcde   1/1     Running             0                                              │
+│   pod/mydeploy-79b8c548d-fghij   0/1     ContainerCreating   0                                              │
+│   pod/mydeploy-79b8c548d-klmno   0/1     ContainerCreating   0                                              │
+│                                                                                                             │
+│ [ POST-LOAD / COOLDOWN PERIOD ]                                                                             │
+│ - [ T = 0m ] Load stopped; CPU drops from 85% down to 2%.                                                   │
+│ - [ T = 2m ] HPA maintains 3 replicas because default Cooldown (5 min) has not expired yet.                 │
+│ - [ T = 5m ] Cooldown ends; HPA scales down excess pods:                                                    │
+│   pod/mydeploy-79b8c548d-fghij   1/1     Terminating         0                                              │
+│ - [ T = 6m ] Replicas return to baseline (1/1 active).                                                        │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 
+## 4. ⚙️ KUBERNETES JOBS
+* **📌 Definition:** A Job creates one or more Pods and ensures a specified number of them successfully terminate (exit code 0).
+* **🔄 Why it's used normally:** Unlike Deployments (which run continuously like web servers), Jobs run to completion and then stop.
+* **⚖️ Difference from other objects:** Deployments/ReplicaSets keep running services forever; Jobs run finite tasks and stop.
+* **💼 Use Cases:** Log rotation, scheduled interval tasks, batch processing, Helm chart DB migrations, and database backups.
+
+### 📄 Manifest (`job.yml`)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: testjob # 🏷️ Name of the Job object
+spec:
+  template:
+    metadata:
+      name: testjob
+    spec:
+      containers:
+        - name: counter
+          image: centos:7
+          command: ["bin/bash", "-c", "echo Technical-Guftgu; sleep 5"] # ⏱️ Finite task command execution
+      restartPolicy: Never # 🔒 Required for Jobs (Prevents infinite restart loops on successful exit)
+
+### 🛠️ Commands Executed & Output Logs:
+# 1. Check current pods
+kubectl get pods
+# -> Expected Output:
+# No resources found in default namespace.
+
+# 2. Clean up any previous job and apply the new one
+kubectl delete -f job.yml --ignore-not-found=true
+kubectl apply -f job.yml
+# -> Expected Output:
+# job.batch/testjob created
+
+# 3. Watch the pods run and complete
+watch kubectl get pods
+
+### ⏱️ Step-by-Step Watch Progression Box Drawing (`watch kubectl get pods`):
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                 STEP-BY-STEP JOB POD LIFECYCLE PROGRESSION                                  │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 0s: COMMAND EXECUTED                                                                                 │
+│    • Command: `kubectl apply -f job.yml`                                                                    │
+│    • What happens: The Kubernetes API Server receives the Job object, validates it, and creates a Job         │
+│      controller. The Job controller immediately requests the creation of 1 Pod.                             │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 2s: SCHEDULING & IMAGE PULLING (STATUS: ContainerCreating)                                           │
+│    • What happens:                                                                                          │
+│      1. The Scheduler assigns the Pod to a worker node (e.g., minikube).                                    │
+│      2. The Kubelet on that node instructs the container runtime to download the `centos:7` image.          │
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME            READY   STATUS              RESTARTS   AGE                                             │
+│      testjob-abcde   0/1     ContainerCreating   0          2s                                              │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 5s: CONTAINER EXECUTION (STATUS: Running)                                                            │
+│    • What happens:                                                                                          │
+│      1. The container image layers are extracted.                                                           │
+│      2. The entrypoint command (`bin/bash -c "echo Technical-Guftgu; sleep 5"`) executes.                   │
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME            READY   STATUS    RESTARTS   AGE                                                       │
+│      testjob-abcde   1/1     Running   0          5s                                                        │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 10s: TASK COMPLETION & EXIT (STATUS: Completed)                                                      │
+│    • What happens:                                                                                          │
+│      1. The `sleep 5` command finishes successfully.                                                        │
+│      2. The main process exits with exit code `0` (Success). Pod stops running.                             │
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME            READY   STATUS      RESTARTS   AGE                                                     │
+│      testjob-abcde   0/1     Completed   0          10s                                                     │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 15s+ (POST-COMPLETION CLEANUP):                                                                      │
+│    • Check logs: `kubectl logs testjob-abcde` -> Output: Technical-Guftgu                                   │
+│    • Delete job: `kubectl delete -f job.yml` -> job.batch/testjob deleted                                   │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 
+## 5. ⚡ ADVANCED PARALLEL JOB (`job2.yml`)
+### 📄 Manifest (`job2.yml`)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: testjob
+spec:
+  parallelism: 5                         # 🚀 Runs 5 pods simultaneously in parallel
+  activeDeadlineSeconds: 10              # ⏱️ Times out and forcefully terminates the job after 10 seconds
+  template:
+    metadata:
+      name: testjob
+    spec:
+      containers:
+        - name: counter
+          image: centos:7
+          command: ["bin/bash", "-c", "echo Technical-Guftgu; sleep 20"]
+      restartPolicy: Never
+
+### 🛠️ Commands Executed & Output Logs:
+# 1. Check pods
+kubectl get pods
+
+# 2. Delete old job and apply the parallel job
+kubectl delete -f job2.yml --ignore-not-found=true
+kubectl apply -f job2.yml
+# -> Expected Output:
+# job.batch/testjob created
+
+# 3. Watch the pods spawn in parallel and time out/complete
+watch !!
+
+### ⏱️ Step-by-Step Watch Progression Box Drawing (`watch !!`):
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                STEP-BY-STEP PARALLEL JOB LIFECYCLE PROGRESSION                              │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 0s: COMMAND EXECUTED                                                                                 │
+│    • Command: `watch !!` (expands to `watch kubectl get pods`)                                              │
+│    • What happens: The Job controller parses `parallelism: 5` and requests 5 Pod instances to create at once. │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 2s: PARALLEL SPAWNING (STATUS: ContainerCreating)                                                    │
+│    • What happens: All 5 pods are scheduled concurrently and begin pulling images simultaneously.           │
+│    • Terminal Output (`watch !!`):                                                                          │
+│      NAME            READY   STATUS              RESTARTS   AGE                                             │
+│      testjob-abcde   0/1     ContainerCreating   0          2s                                              │
+│      testjob-fghij   0/1     ContainerCreating   0          2s                                              │
+│      testjob-klmno   0/1     ContainerCreating   0          2s                                              │
+│      testjob-pqrst   0/1     ContainerCreating   0          2s                                              │
+│      testjob-uvwxy   0/1     ContainerCreating   0          2s                                              │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 10s: DEADLINE TIMEOUT REACHED (STATUS: Error / Terminated)                                           │
+│    • What happens:                                                                                          │
+│      1. The `activeDeadlineSeconds: 10` timer expires.                                                      │
+│      2. The Job controller forcefully terminates all active pods to prevent runaway resource consumption. │
+│    • Terminal Output (`watch !!`):                                                                          │
+│      NAME            READY   STATUS     RESTARTS   AGE                                                      │
+│      testjob-abcde   0/1     Error      0          10s                                                      │
+│      testjob-fghij   0/1     Error      0          10s                                                      │
+│      testjob-klmno   0/1     Error      0          10s                                                      │
+│      testjob-pqrst   0/1     Error      0          10s                                                      │
+│      testjob-uvwxy   0/1     Error      0          10s                                                      │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 12s+ (POST-COMPLETION CLEANUP):                                                                      │
+│    • Delete job: `kubectl delete -f job2.yml` -> job.batch/testjob deleted                                   │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 
+## 6. 🕒 KUBERNETES CRONJOBS
+### 📄 Manifest (`cronjob.yml`)
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+   name: bhupi
+spec:
+  schedule: "* * * * *" # ⏱️ Cron syntax: Triggers a new job execution every single minute
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: bhupi
+              image: ubuntu
+              command: ["/bin/bash", "-c", "echo Technical-Guftgu; sleep 5"]
+          restartPolicy: Never
+
+### 🛠️ Commands Executed & Output Logs:
+# 1. Apply CronJob manifest
+kubectl apply -f cronjob.yml
+# -> Expected Output:
+# cronjob.batch/v1beta1 created (or cronjob.batch/v1 created depending on cluster version)
+
+# 2. Watch pods get created automatically every minute
+watch kubectl get pods
+
+### ⏱️ Step-by-Step Watch Progression Box Drawing (`watch kubectl get pods`):
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                 STEP-BY-STEP CRONJOB SCHEDULING PROGRESSION                                 │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ MINUTE 00 (e.g., 12:00:00 PM): SCHEDULE TRIGGERED                                                        │
+│    • What happens: The CronJob controller evaluates `* * * * *`, sees a match, and spawns a child Job pod.    │
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME                READY   STATUS              RESTARTS   AGE                                         │
+│      bhupi-28795322-abc  0/1     ContainerCreating   0          2s                                          │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ MINUTE 00 + 10s (12:00:10 PM): JOB COMPLETION                                                            │
+│    • What happens: The pod finishes execution (`sleep 5`) and hits terminal success state (`Completed`).    │
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME                READY   STATUS      RESTARTS   AGE                                                 │
+│      bhupi-28795322-abc  0/1     Completed   0          12s                                                 │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ MINUTE 01 (12:01:00 PM): NEXT SCHEDULED TRIGGER                                                          │
+│    • What happens: The cron schedule triggers again. A brand new child job and pod are automatically created.│
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME                READY   STATUS              RESTARTS   AGE                                         │
+│      bhupi-28795323-xyz  0/1     ContainerCreating   0          2s                                          │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ POST-COMPLETION CLEANUP:                                                                                 │
+│    • List historical jobs: `kubectl get jobs`                                                               │
+│    • Delete CronJob controller: `kubectl delete -f cronjob.yml` (purges all child jobs and pods)            │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 
+## 7. 📥 INIT CONTAINERS
+* **📌 Definition:** An Init Container is a specialized container that runs to completion **before** your main application containers start up inside a Pod. They always run sequentially one after another.
+* **💼 Use Cases (Detailed):**
+  1. **Seeding a Database:** Populating initial tables or default configuration data into a database before backend start.
+  2. **Waiting for Dependencies:** Blocking application startup until a dependent service is reachable over network.
+  3. **Cloning a Git Repository:** Pulling source code files from remote Git repos into shared storage volumes.
+  4. **Generating Config Files Dynamically:** Constructing configuration files on the fly using environment variables.
+
+### 📐 Init Container Flow Diagram
+[ Pod Starts ] 
+      ▼
+ ┌────────────────────────────────────────┐
+ │ Init Container 1: Wait for DB          │ ──(Runs to completion: SUCCESS)
+ └────────────────────────────────────────┘
+      ▼
+ ┌────────────────────────────────────────┐
+ │ Init Container 2: Clone Git Repo       │ ──(Runs to completion: SUCCESS)
+ └────────────────────────────────────────┘
+      ▼ (All init containers passed!)
+ ┌────────────────────────────────────────┐
+ │ Main Application Container (Running)   │ ──(Starts serving traffic)
+ └────────────────────────────────────────┘
+
+### 📄 Manifest (`init.yml`)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: initcontainer-pod
+spec:
+  initContainers:
+    - name: init-myservice
+      image: busybox:1.28
+      command: ['sh', '-c', 'echo "Initializing..."; sleep 5'] # 🔄 Must finish successfully before main-app starts
+  containers:
+    - name: main-app
+      image: centos
+      command: ["/bin/bash", "-c", "while true; do echo App running; sleep 5; done"]
+
+### 🛠️ Commands Executed & Output Logs:
+# 1. Apply init container pod
+kubectl apply -f init.yml
+# -> Expected Output:
+# pod/initcontainer-pod created
+
+# 2. Watch pod status change from Init to Running
+watch kubectl get pods
+
+# 3. Check logs of the init container
+kubectl logs -f pod/initcontainer-pod -c init-myservice
+# -> Expected Output:
+# Initializing...
+
+### ⏱️ Step-by-Step Watch Progression Box Drawing (`watch kubectl get pods`):
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                 STEP-BY-STEP INIT CONTAINER POD PROGRESSION                                 │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 3s: INITIALIZATION PHASE (STATUS: Init:0/1)                                                          │
+│    • What happens: The Pod is scheduled. The init container (`init-myservice`) runs its command. The main     │
+│      application container (`main-app`) is completely blocked and waiting for init containers to finish.    │
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME                READY   STATUS     RESTARTS   AGE                                                 │
+│      initcontainer-pod   0/1     Init:0/1   0          3s                                                  │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ T = 8s: MAIN APP STARTUP (STATUS: Running 1/1)                                                           │
+│    • What happens: The init container completes successfully (exit code 0). Kubernetes starts the main app.  │
+│    • Terminal Output (`watch kubectl get pods`):                                                            │
+│      NAME                READY   STATUS     RESTARTS   AGE                                                 │
+│      initcontainer-pod   1/1     Running    0          8s                                                  │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏱️ POST-COMPLETION INSPECTION & CLEANUP:                                                                    │
+│    • Check main logs: `kubectl logs initcontainer-pod -c main-app` -> Output: App running                   │
+│    • Delete pod: `kubectl delete -f init.yml` -> pod/initcontainer-pod deleted                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 
+## 8. 🧬 POD LIFECYCLES & CONDITIONS
+### 📦 Pod Lifecycle States (Box Drawing Reference)
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                            POD LIFECYCLE STATES                                             │
+├───────────────┬─────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 🟡 Pending    │ Pod accepted by cluster, but one or more containers have not been created or started yet.   │
+├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 🟢 Running    │ Pod bound to a node, all containers created, at least one container is running or starting. │
+├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ✅ Succeeded  │ All containers terminated successfully (exit code 0) and will not be restarted.             │
+├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ❌ Failed     │ All containers terminated, and at least one container failed with a non-zero exit code.     │
+├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 🏁 Completed  │ Batch jobs/pods that finished successfully.                                                 │
+├───────────────┼─────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ❓ Unknown    │ State cannot be obtained due to node communication issues or network partition.             │
+└───────────────┴─────────────────────────────────────────────────────────────────────────────────────────────┘
+ 
+## 9. 🔍 DESCRIBING PODS: CONDITIONS & EVENTS ONLY
+# Run this command to inspect pod conditions and control plane events:
+kubectl describe pod initcontainer-pod
+
+### 📄 Conditions & Events Section Output Only:
+Conditions:
+  Type                        Status
+  PodScheduled                True 
+  Initialized                 True 
+  ContainersReady             True 
+  Ready                       True 
+
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  12s   default-scheduler  Successfully assigned default/initcontainer-pod to minikube
+  Normal  Pulled     11s   kubelet            Container image "busybox:1.28" already present on machine
+  Normal  Created    11s   kubelet            Created container init-myservice
+  Normal  Started    11s   kubelet            Started container init-myservice
+  Normal  Pulled     6s    kubelet            Container image "centos" already present on machine
+  Normal  Created    6s    kubelet            Created container main-app
+  Normal  Started    6s    kubelet            Started container main-app
+
+* **🎯 Where the Pod ID (UID) can be found:** In the metadata section of the describe output under **`UID:`**, or by running `kubectl get pod initcontainer-pod -o yaml`.
+

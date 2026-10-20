@@ -1,0 +1,455 @@
++------------------------------------------------------------------------------------------------------------------------+
+|                                        TABLE OF CONTENTS & INDEX : HELM                                                |
++------------------------------------------------------------------------------------------------------------------------+
+| 1. CORE CONCEPTS & ARCHITECTURE                                                                                        |
+|    * What is Helm?              # ☸️ [K8s Package]      Official package manager for Kubernetes[cite: 1]              |
+|    * Logo Connection            # ⚓ [Ship Metaphor]    Steering wheel (k8s) & Anchor (helm)                           |
+|    * Helm 2 vs. Helm 3          # 🛡️ [Tiller-less]      Architecture shift removing server-side Tiller                 |
++------------------------------------------------------------------------------------------------------------------------+
+| 2. CHART STRUCTURE & TEMPLATING ENGINE                                                                                 |
+|    * Chart Directory Hierarchy  # 📂 [Template Bundle]  Organized YAML manifests and metadata                          |
+|    * Values Injection Flow      # ⚙️ [Go Templates]     Dynamic variable rendering via values.yaml                     |
++------------------------------------------------------------------------------------------------------------------------+
+| 3. COMMAND STRUCTURE TREE                                                                                              |
+|    * Visual Map                 # 🗺️ [Command Tree]     Overview of Repo, Install, Manage, Dev, and Configure commands |
++------------------------------------------------------------------------------------------------------------------------+
+| 4. COMPREHENSIVE COMMAND USAGE & EXPECTED OUTPUTS                                                                      |
+|    * Installation & Verify      # 📥 [Setup & Path]     Downloading script and checking binary location                |
+|    * Repositories & Search      # 🏬 [Chart Registry]   Adding repos, searching charts, pulling packages               |
+|    * Release Lifecycle          # 🚀 [Deploy & Rollback] Installing, upgrading, history, rollback, and deleting        |
+|    * Configuration Overrides    # 🎛️ [Values Override]  Passing data via --set and external YAML files                 |
+|    * Chart Dev & Debugging      # 🛠️ [Dev & Debug]      Linting, dry-runs, dependency management, and test hooks       |
++------------------------------------------------------------------------------------------------------------------------+
+
+☸️ HELM: THE ULTIMATE PACKAGE MANAGER FOR KUBERNETES - MASTER CHEAT SHEET & ARCHITECTURE NOTES ⚓
+
+------------------------------------------------------------------------------------------------------------------------
+1. CORE CONCEPTS & ARCHITECTURE
+------------------------------------------------------------------------------------------------------------------------
+---> HELM: The official Package Manager for Kubernetes (Written natively in Go 🐹 for seamless API integration).[cite: 1]
+
++----------------------------------------------------------------------------------------------------------------------+
+|                                                 THE PACKAGE MANAGERS                                                 |
++----------------------------------------------------------------------------------------------------------------------+
+| Ubuntu (Debian-based)                 | Amazon Linux (RPM-based)              | Kubernetes Cluster Level                     |
+| 🐧 Tool: apt                          | 📦 Tool: yum / dnf                    | ☸️ Tool: helm[cite: 1]                      |
+| 💻 Command: apt install nginx         | 💻 Command: sudo yum install nginx    | 🚀 Command: helm install nginx-chart[cite: 1]|
+| ⚙️ Action: Installs OS package        | ⚙️ Action: Installs RPM package       | 🏗️ Action: Installs all k8s resources auto[cite: 1]|
++----------------------------------------------------------------------------------------------------------------------+
+
+🎨 Symbolic Connection & Metaphor:
+* Kubernetes Logo = ☸ (Ship's Wheel / Helm)  --> Steers, guides, and coordinates all containerized workloads in the cluster.
+* Helm Logo        = ⚓ (Ship's Anchor / Helm) --> Manages, packages, and secures applications to "drop anchor" reliably.
+
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                              ⚡ HELM ECOSYSTEM MAP ⚡                                            ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+          │
+          ├──► 🌐 [ 1. REMOTE REGISTRY ]
+          │          ├── 📥 Commands  : helm pull / repo add / search repo
+          │          └── 📦 Purpose   : Stores packaged charts (Artifact Hub, OCI Registries)
+          │
+          │          ▼ (Downloads chart source files)
+          │
+          ├──► 📂 [ 2. LOCAL CHART WORKSPACE ]
+          │          ├── 📄 Chart.yaml     ──► Metadata, name, and version info
+          │          ├── ⚙️ values.yaml    ──► Default configuration variables
+          │          ├── 📁 templates/     ──► Go-template manifests (YAML)
+          │          └── 📁 crds/          ──► Custom Resource Definitions
+          │
+          │          ▼ (Triggered via CLI)
+          │
+          ├──► 🛠️ [ 3. HELM CLI ENGINE ]
+          │          ├── 🎛️ Config Flags   ──► --set, -f values.yaml, --dry-run
+          │          ├── 🚀 Lifecycle      ──► helm install / upgrade / rollback / test
+          │          └── 📝 Renderer       ──► Merges values into Go-templates to build raw YAML
+          │          │
+          │          │  (Sends rendered YAML) ──────────────────────────────┐
+          │          │                                                      │
+          │          ▼                                                      ▼
+          │                                                    ┌───────────────────────────────────┐
+          │                                                    │ 🚪 [ 4. KUBE API SERVER ]         │
+          │                                                    │     (The Front Desk / Gateway)    │
+          │                                                    │                                   │
+          │                                                    │ 🔍 [ CHECK ] Auth, RBAC & Schema  │
+          │                                                    │ ✅ [ PROCEED ] Saves into etcd    │
+          │                                                    └──────────────┬────────────────────┘
+          │                                                                   │
+          │                                                                   │ (Tells nodes to build)
+          │                                                                   ▼
+          └──► ☸️ [ 5. KUBERNETES CLUSTER ] (Target Destination) ─────────────┘
+                     ├── 💾 Release Storage ──► Tracked revision history saved as K8s Secrets / ConfigMaps
+                     └── 🚀 Active Workloads──► Running Pods, Deployments, Services, and Ingress
+
+------------------------------------------------------------------------------------------------------------------------
+2. CHART STRUCTURE & TEMPLATING ENGINE
+------------------------------------------------------------------------------------------------------------------------
+# Instead of tracking raw, unmanaged YAML files individually, Helm bundles them into a standardized Chart package.
+
+my-app-chart/
+├── Chart.yaml             # 📋 Metadata about the chart (name, appVersion, description, dependencies)
+├── values.yaml            # ⚙️ Default configuration settings & variables (non-hardcoded values injected at runtime)
+└── templates/             # 🛠️ Directory holding standard Kubernetes template blueprint files
+    │
+    ├── [ FRONTEND COMPONENTS ]
+    │   ├── service.yaml       # 🌐 Frontend Service config (exposes pods internally or externally via ClusterIP/LoadBalancer)
+    │   ├── configmap.yaml     # 📝 Frontend ConfigMap (stores non-sensitive environment variables & configuration properties)
+    │   └── deployment.yaml    # 🚀 Frontend Deployment application (manages pod replicas, scaling, and zero-downtime rolling updates)
+    │
+    └── [ BACKEND COMPONENTS ]
+        ├── statefulset.yaml   # 💾 Backend Database StatefulSet (manages stateful DB pods with stable network IDs & persistent storage)
+        ├── secret.yaml        # 🔐 Backend Secrets (securely stores database passwords, TLS certificates, and API keys base64-encoded)
+        └── service-ports.yaml # 🔌 Backend Service ports config (defines internal networking rules, cluster ports, and routing)
+
++----------------------------------------------------------------------------------------------------------------------+
+|                                      CLEAR VALUE INJECTION & RENDERING FLOW                                          |
++----------------------------------------------------------------------------------------------------------------------+
+| STEP 1: CONFIGURATION (values.yaml)         STEP 2: BLUEPRINT TEMPLATE (templates/deployment.yaml)                   |
+| -----------------------------------         ------------------------------------------------------                   |
+| replicaCount: 3                             apiVersion: apps/v1                                                      |
+| imageName: "nginx"                          kind: Deployment                                                         |
+| imageTag: "1.21.6"                          spec:                                                                    |
+|                                               replicas: {{ .Values.replicaCount }}  <-- Dynamic injection (`3`)      |
+|                                               template:                                                                |
+|                                                 spec:                                                                  |
+|                                                   containers:                                                          |
+|                                                   - name: app                                                          |
+|                                                     image: {{ .Values.imageName }}:{{ .Values.imageTag }}            |
+|                                                                                                                      |
+|                               [ HELM ENGINE COMBINES BOTH TO GENERATE PURE K8S MANIFESTS ]                           |
++----------------------------------------------------------------------------------------------------------------------+
+
+------------------------------------------------------------------------------------------------------------------------
+3. HELM COMMAND STRUCTURE TREE
+------------------------------------------------------------------------------------------------------------------------
+                                         HELM
+                                          │
+            ┌─────────────────────┬───────┴───────┬─────────────────────┐
+            │                     │               │                     │
+            ↓                     ↓               ↓                     ↓
+          REPO                 INSTALL         MANAGE                  DEV
+            │                     │               │                     │
+         repo add              install          list                  lint
+        repo list             uninstall        status               template
+       repo update             upgrade          get                dependency
+       repo remove            rollback        history                  test
+       search repo                │               │                     │
+          pull                    └───────┬───────┘                     │
+            │                             │                             │
+            └─────────────────────────────┼─────────────────────────────┘
+                                          │
+                                          ↓
+                                      CONFIGURE
+                                          │
+                                        --set
+                                       --values
+                                  --create-namespace
+                                      --dry-run
+                                       --debug
+
+------------------------------------------------------------------------------------------------------------------------
+4. COMPREHENSIVE COMMAND USAGE, COMMENTS & EXPECTED OUTPUTS
+------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------
+📥 INSTALLATION & VERIFICATION
+------------------------------------------------------------------------------------------------------------------------
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 # 📥 Download script | Fetches official Helm installer
+chmod 700 get_helm.sh                                      # 🔒 Set permissions | Makes the script executable
+./get_helm.sh                                              # 🚀 Execute script | Installs Helm binary locally
+
+which helm                                                 # 🔍 Check binary location | Locates the Helm executable path on Linux
+# 📋 Expected Output:
+/usr/local/bin/helm
+
+helm version                                               # 🔢 Check version | Displays installed Helm client version and protocol
+# 📋 Expected Output:
+version.BuildInfo{Version:"v3.14.0", GitCommit:"abcdef1", GoVersion:"go21.1", Compiler:"gc", Platform:"linux/amd64"}
+
+------------------------------------------------------------------------------------------------------------------------
+🏬 REPOSITORY, SEARCH & PULL COMMANDS
+------------------------------------------------------------------------------------------------------------------------
+helm repo add bitnami https://charts.bitnami.com/bitnami    # ➕ Add repository | Registers Bitnami official remote chart registry locally
+# 📋 Expected Output:
+"bitnami" has been added to your repositories
+
+helm repo list                                             # 📋 List repositories | Displays all registered chart repositories on your machine
+# 📋 Expected Output:
+NAME    URL                                       
+bitnami https://charts.bitnami.com/bitnami
+
+helm repo update                                           # 🔄 Update repositories | Refreshes local cache to pull the latest available chart versions from remote registries
+# 📋 Expected Output:
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "bitnami" chart repository
+Update Complete. ⎈Happy Helming!⎈
+
+helm search repo bitnami/tomcat                            # 🔎 Search charts | Scans remote repositories for charts matching "tomcat"
+# 📋 Expected Output:
+NAME            CHART VERSION   APP VERSION     DESCRIPTION                                       
+bitnami/tomcat  10.1.5          10.1.18         Apache Tomcat is an open source implementation...
+
+helm search repo bitnami/tomcat -l                         # 📜 Search all versions | Lists all available versions including older releases (e.g. 0.4.0)
+# 📋 Expected Output:
+NAME            CHART VERSION   APP VERSION     DESCRIPTION                                       
+bitnami/tomcat  10.1.5          10.1.18         Apache Tomcat is an open source implementation...
+bitnami/tomcat  0.4.0           10.1.18         Apache Tomcat is an open source implementation...
+
+helm pull bitnami/tomcat --version 0.4.0                   # 📥 Pull archive | Downloads specific version 0.4.0 chart package tarball (.tgz)
+# 📋 Expected Output:
+(Downloads tomcat-0.4.0.tgz silently into the current directory)
+
+helm pull bitnami/tomcat --untar                           # 📂 Pull and untar | Downloads chart package and automatically extracts the folder
+# 📋 Expected Output:
+(Downloads and extracts the chart folder into a local tomcat/ directory)
+
+helm show values bitnami/tomcat --version 0.4.0            # 📖 Show default values | Displays default configuration properties (values.yaml)
+# 📋 Expected Output:
+global:
+  imageRegistry: ""
+image:
+  registry: docker.io
+  repository: bitnami/tomcat
+  tag: 10.1.18-debian-11-r0
+service:
+  type: ClusterIP
+  port: 8080
+
+------------------------------------------------------------------------------------------------------------------------
+🚀 INSTALLATION & RELEASE MANAGEMENT
+------------------------------------------------------------------------------------------------------------------------
+helm install my-tomcat bitnami/tomcat --version 0.4.0      # 🚀 Deploy release | Installs version 0.4.0 into Kubernetes cluster as "my-tomcat"
+# 📋 Expected Output:
+NAME: my-tomcat
+LAST DEPLOYED: Mon Oct 19 12:33:00 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+CHART NAME: tomcat
+CHART VERSION: 0.4.0
+APP VERSION: 10.1.18
+
+helm list                                                  # 📊 List releases | Displays all active deployed releases in the current namespace
+# 📋 Expected Output:
+NAME        NAMESPACE   REVISION    UPDATED                                 STATUS      CHART           APP VERSION
+my-tomcat   default     1           2026-10-19 12:33:00.123456 +0530 IST    deployed    tomcat-0.4.0    10.1.18    
+
+helm upgrade my-tomcat bitnami/tomcat                      # 🔄 Upgrade release | Updates existing release to the latest available chart version
+# 📋 Expected Output:
+Release "my-tomcat" has been upgraded. Happy Helming!
+NAME: my-tomcat
+LAST DEPLOYED: Mon Oct 19 12:35:00 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 2
+TEST SUITE: None
+
+helm history my-tomcat                                     # 📜 View history | Tracks revision history, changelogs, and upgrades for release
+# 📋 Expected Output:
+REVISION    UPDATED                         STATUS      CHART           APP VERSION     DESCRIPTION     
+1           Mon Oct 19 12:33:00 2026        superseded  tomcat-0.4.0    10.1.18         Install complete
+2           Mon Oct 19 12:35:00 2026        deployed    tomcat-10.1.5   10.1.18         Upgrade complete
+
+helm rollback my-tomcat 1                                  # ⏪ Rollback release | Reverts the deployment back to revision 1 (version 0.4.0)
+# 📋 Expected Output:
+Rollback was a success! Happy Helming!
+
+helm delete my-tomcat                                      # 🗑️ Delete release | Uninstalls and removes the release and resources from cluster
+# 📋 Expected Output:
+release "my-tomcat" uninstalled
+
+------------------------------------------------------------------------------------------------------------------------
+⚙️ PASSING CONFIGURATION DATA IN HELM ⚓
+------------------------------------------------------------------------------------------------------------------------
+In Helm, **Passing Configuration Data** refers to the mechanism of supplying custom values to a chart to override its default settings (`values.yaml`). 
+Instead of modifying the chart's internal files directly, you pass your configuration data outward from your local environment into the chart during installation or upgrade.
+
+🖼️ VISUAL CONCEPT: --> CONFIGURATION CONCEPT: `--set` (COMMAND LINE) VS `--values` (MANUAL FILE EDIT) ⚓
++---------------------------------------------------------+                 +---------------------------------------------------------+
+| 📄 DEFAULT CHART CONFIGURATION (`values.yaml`)          |                 | ☸️ DEFAULT K8S MANIFEST BASELINE                        |
++---------------------------------------------------------+                 +---------------------------------------------------------+
+| • replicaCount: 1                                       |                 | • replicaCount: 1                                       |
+| • service.type: ClusterIP                               |                 | • service.type: ClusterIP                               |
+| • service.port: 80                                      |                 | • service.port: 80                                      |
++---------------------------------------------------------+                 +---------------------------------------------------------+
+                             │                                                                                                    │
+                             ├───────────────────────────────────────────┐                                                        │
+                             │                                           │                                                        │
+                             ▼ (Inline Terminal Flag)                    ▼ (External Configuration File)                          │
++---------------------------------------------------------+   +---------------------------------------------------------+         │
+| 💻 METHOD 1: CLI INLINE FLAG (`--set`)                  |   | 📁 METHOD 2: EXTERNAL YAML FILE (`-f`)                  |         │
++---------------------------------------------------------+   +---------------------------------------------------------+         │
+| Command:                                                |   | File (`custom-values.yaml`):                            |         │
+| `helm install my-web bitnami/tomcat --set ...`          |   | • replicaCount: 3                                       |         │
+|                                                         |   | • service.type: LoadBalancer                            |         │
+| Use Case: Quick, single-property changes typed          |   | • service.port: 8080                                    |         │
+| directly in the terminal without creating extra files.  |   |                                                         |         │
+|                                                         |   | Use Case: Production environments, complex deployments  |         │
+|                                                         |   | with multiple properties, ports, replicas, and secrets. |         │
++---------------------------------------------------------+   +---------------------------------------------------------+         │
+                             │                                           │                                                        │
+                             └───────────────────────────┬───────────────┘                                                        │
+                                                         │                                                                        │
+                                                         ▼                                                                        │
+                                      +---------------------------------------------------------------------------------+         │
+                                      | ⚙️ HELM RENDERING & TEMPLATING ENGINE                                           | <───────┘
+                                      +---------------------------------------------------------------------------------+
+                                      | Dynamically merges the default `values.yaml` baseline with your chosen override |
+                                      +---------------------------------------------------------------------------------+
+                                                                                 │
+                                                                                 ▼
+                                      +---------------------------------------------------------------------------------+
+                                      | 🚀 FINAL RENDERED KUBERNETES MANIFESTS DEPLOYED TO CLUSTER                      |
+                                      +---------------------------------------------------------------------------------+
+                                      | • replicaCount: 3          (🌟 Overridden via External File)                    |
+                                      | • service.type: LoadBalancer (🌟 Overridden via `--set` Flag or File)           |
+                                      | • service.port: 8080       (🌟 Overridden via External File)                    |
+                                      +---------------------------------------------------------------------------------+
+
+helm install my-web bitnami/tomcat --version 0.4.0 --set service.type=LoadBalancer # ⚙️ Inline override | Overrides configuration parameter on the fly
++----------------------------------------------------------------------------------------------------------------------+
+|                                     INLINE OVERRIDE FLOW (--set service.type=LoadBalancer)                           |
++----------------------------------------------------------------------------------------------------------------------+
+| [ values.yaml (Default) ]          -->          [ --set Flag ]           -->          [ Rendered Manifest (ClusterIP)  ]
+| service.type: ClusterIP                         service.type=LoadBalancer              service.type: LoadBalancer    |
++----------------------------------------------------------------------------------------------------------------------+
+# 📋 Expected Output:
+NAME: my-web
+LAST DEPLOYED: Mon Oct 19 12:38:00 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+
+helm install my-web bitnami/tomcat --version 0.4.0 -f custom-values.yaml # 📄 File override | Uses custom configuration values from an external YAML file
+# 📋 Expected Output:
+NAME: my-web
+LAST DEPLOYED: Mon Oct 19 12:39:00 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+
+------------------------------------------------------------------------------------------------------------------------
+🛠️ CHART DEVELOPMENT, VALIDATION & TESTING COMMANDS
+------------------------------------------------------------------------------------------------------------------------
+helm lint ./my-app-chart                                   # 🔍 Validate chart | Examines a chart for potential issues and best practices before packaging
+# 📋 Expected Output:
+==> Linting ./my-app-chart
+1 chart(s) linted, 0 chart(s) failed
+
+helm template my-web bitnami/tomcat --version 0.4.0        # 📄 Dry-run render | Renders charts locally to terminal without installing them into the cluster
+# 📋 Expected Output:
+---
+# Source: tomcat/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-web-tomcat
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+
+helm dependency update ./my-app-chart                       # 🔗 Manage dependencies | Builds, lists, or updates dependent charts defined in Chart.yaml
+# 📋 Expected Output:
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "bitnami" chart repository
+Saving 1 charts
+Deleting outdated charts
+
+helm test my-tomcat                                        # 🧪 Test release | Runs any pre-defined test hooks inside the pods of a deployed release
+# 📋 Expected Output:
+NAME: my-tomcat
+LAST DEPLOYED: Mon Oct 19 12:33:00 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+Phase: Succeeded
+Notes:
+POD LOGS: my-tomcat-test-connection
+Requesting http://my-tomcat:8080 ...
+200 OK
+
+helm install my-web bitnami/tomcat --dry-run               # 🏜️ Simulates installation | Simulates an install/upgrade to verify syntax and output without modifying cluster
+# 📋 Expected Output:
+NAME: my-web
+LAST DEPLOYED: Mon Oct 19 12:42:00 2026
+NAMESPACE: default
+STATUS: pending-install
+REVISION: 1
+HOOKS:
+MANIFEST:
+---
+# Source: tomcat/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-web-tomcat
+spec:
+  type: ClusterIP
+
+helm install my-web bitnami/tomcat --debug                 # 🐞 Verbose output | Prints out full error stack traces and rendered templates for deep troubleshooting
+# 📋 Expected Output:
+install.go:200: [debug] Original chart version: ""
+install.go:217: [debug] CHART PATH: /root/.cache/helm/repository/tomcat-10.1.5.tgz
+NAME: my-web
+LAST DEPLOYED: Mon Oct 19 12:43:00 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+
+------------------------------------------------------------------------------------------------------------------------
+🔍 INSPECTING RELEASES (`helm get` VS `helm show`)
+------------------------------------------------------------------------------------------------------------------------
+helm get manifest my-web                                   # 📜 Get manifest | Fetches actual generated YAML manifests deployed in the cluster
+
++----------------------------------------------------------------------------------------------------------------------+
+|                                         `helm get` VS `helm show` ARCHITECTURE                                       |
++----------------------------------------------------------------------------------------------------------------------+
+| 🚀 `helm get`: Queries cluster storage (Secrets/ConfigMaps inside k8s) to inspect an ALREADY INSTALLED release.      |
+| 📦 `helm show`: Queries local/remote chart archives (.tgz) to inspect packaged metadata BEFORE installation.          |
++----------------------------------------------------------------------------------------------------------------------+
+
+# 📋 Expected Output:
+---
+# Source: tomcat/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-web-tomcat
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8080
+    targetPort: http
+
+helm get values my-web                                     # 🛠️ Get values | Displays only user-supplied configuration values passed at install
+# 📋 Expected Output:
+USER-SUPPLIED VALUES:
+service:
+  type: LoadBalancer
+
+------------------------------------------------------------------------------------------------------------------------
+📊 STATUS & NAMESPACE MANAGEMENT
+------------------------------------------------------------------------------------------------------------------------
+helm status my-web                                         # ℹ️ Check status | Displays detailed deployment status, notes, and resource state
+# 📋 Expected Output:
+NAME: my-web
+LAST DEPLOYED: Mon Oct 19 12:38:00 2026
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+
+helm install my-tomcat bitnami/tomcat --version 0.4.0 -n production --create-namespace # 🌐 Custom namespace | Deploys release into target namespace and creates it if missing
+# 📋 Expected Output:
+Creating namespace "production"
+NAME: my-tomcat
+LAST DEPLOYED: Mon Oct 19 12:40:00 2026
+NAMESPACE: production
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None

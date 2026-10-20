@@ -1,0 +1,344 @@
++------------------------------------------------------------------------------------------------------------------------+
+|                                        TABLE OF CONTENTS & INDEX : DOCKER                                              |
++------------------------------------------------------------------------------------------------------------------------+
+| 1. CORE CONCEPTS & ARCHITECTURE                                                                                        |
+|    * Container vs. VM         # 🏢 [Apartment Model]    OS kernel sharing vs. heavy hardware hypervisors[cite: 3]     |
+|    * Docker Daemon            # ⚙️ [Head Chef]          Background system service managing containers[cite: 3]        |
+|    * Docker Client            # 💻 [Waiter Terminal]    CLI interface passing commands to daemon engine[cite: 3]      |
+|    * Docker Registry          # 🏪 [Supermarket Hub]    Public and private cloud repository for images[cite: 3]       |
++------------------------------------------------------------------------------------------------------------------------+
+| 2. IMAGES, CONTAINERS & DOCKERFILE                                                                                     |
+|    * Dockerfile               # 📜 [Written Recipe]     Step-by-step plain text instructions for builds[cite: 3]      |
+|    * Docker Image             # 🧊 [Frozen Batter]      Read-only immutable template blueprint[cite: 3]               |
+|    * Docker Container         # 📦 [Baked Cake]         Live, running execution instance of an image[cite: 3]         |
+|    * EXPOSE vs. Port Map      # 🔌 [Network Mapping]    Documentation port declaration vs. host binding[cite: 3]      |
++------------------------------------------------------------------------------------------------------------------------+
+| 3. VOLUMES, NETWORKING & COMMAND CHEAT SHEET                                                                           |
+|    * Volumes & Mounts         # 💾 [Storage Binding]    Persistent data management via volumes[cite: 3]               |
+|    * Exec vs. Attach          # 🚪 [Access Control]     Spawning a guest shell vs. hooking into engine[cite: 3]       |
+|    * Lifecycle & Cleanup      # 🧹 [Bulk Maintenance]   Pruning, stopping, and purging unused resources[cite: 3]      |
++------------------------------------------------------------------------------------------------------------------------+
+
+What is Docker ---> 
+Docker is a tool that packages an application along with all its code, libraries, and dependencies into a single, standardized unit called a
+container.
+
+Docker's main advantages in short:
+Fixes "Works on my machine": Runs identically everywhere—laptop, test server, or cloud.
+Saves Memory & Money: Uses far less RAM and CPU than heavy Virtual Machines.
+Blazing Fast: Boots applications in seconds instead of minutes.
+Instant Team Onboarding: Lets new devs start working instantly with one command instead of spending hours configuring setups.
+
+Docker's main limitations in short:
+Shared Security: Containers share the host OS engine, so one breach can risk the whole system.
+Temporary Memory: Data disappears when a container stops unless saved to an outside folder.
+No Desktop GUIs: It is built for background services, not visual apps like video games or media players.
+OS Restrictions: You cannot run Windows-only software directly on a Linux host.
+Complex at Scale: Managing hundreds of containers requires heavy extra tools like Kubernetes.
+
+─────────────────────────────────────────────────────────────────────────────────────────
+
+Comparison MatrixFeature📦 ------>
+[ 📦 DOCKER CONTAINERS ]
+  • Virtualization : OS-level (Kernel sharing)
+  • OS Requirement : Shares Host OS Kernel
+  • Boot Speed     : Seconds ⚡
+  • Memory Usage   : Minimal (MBs of RAM)
+  • Where it Runs  : Anywhere Docker Engine is installed
+-----------------------------------------------------------------------------------
+[ 🖥️ VMWARE (On-Premises VM) ]
+  • Virtualization : Hardware-level (Hypervisor)
+  • OS Requirement : Full Guest OS per VM
+  • Boot Speed     : Minutes 🐢
+  • Memory Usage   : High (GBs of RAM)
+  • Where it Runs  : On physical hardware via VMware ESXi
+-----------------------------------------------------------------------------------
+[ ☁️ AMAZON EC2 (Cloud VM) ]
+  • Virtualization : Hardware-level (Cloud Hypervisor)
+  • OS Requirement : Full Guest OS per EC2 instance
+  • Boot Speed     : Minutes 🐢
+  • Memory Usage   : High (GBs of RAM)
+  • Where it Runs  : In Amazon's Cloud Data Centers
+
+─────────────────────────────────────────────────────────────────────────────────────────
+===================================================================================
+                       VIRTUAL MACHINE vs. DOCKER CONTAINERIZATION
+===================================================================================
+
+       [ VIRTUAL MACHINE ]                           [ DOCKER CONTAINERIZATION ]
+
+  +-----------------+  +-----------------+     +-----------------+ +-----------------+
+  |      VM 1       |  |      VM 2       |     |   Container 1   | |   Container 2   |
+  |                 |  |                 |     |                 | |                 |
+  |      APP 1      |  |      APP 2      |     |      APP 1      | |      APP 2      |
+  |                 |  |                 |     |                 | |                 |
+  |     Bin/Lib     |  |     Bin/Lib     |     |     Bin/Lib     | |     Bin/Lib     |
+  +-----------------+  +-----------------+     +-----------------+ +-----------------+
+  | Guest Operating |  | Guest Operating |     |             Docker Engine             |
+  |     System      |  |     System      |     +---------------------------------------+
+  +-----------------+  +-----------------+     |         Host Operating System         |
+  |                   Hypervisor         |     +---------------------------------------+
+  +--------------------------------------+     |    Infrastructure (Physical Server)   |
+  |    Infrastructure (Physical Server)  |     +---------------------------------------+
+  +--------------------------------------+
+
+──────────────────────────────────────────────────────────────────────────────────────────
+How to Remember Everything (The Apartment vs. House) ----->
+
+VMware / AWS EC2 = Full Houses 🏡: 
+Each VM is like building a separate, standalone house. Each house requires its own plumbing, wiring, structure, and foundational setup (Guest OS).
+
+Docker = Apartment Units 🏢:
+Docker is like an apartment building. All apartments share the building's main plumbing, water, and structural foundation (Host OS Kernel), but each
+room is isolated, secure, and self-contained inside.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+Explain the Diagram with Kitchen example -------->
+===================================================================================
+                             THE DOCKER KITCHEN SYSTEM
+===================================================================================
+
+  [ 📜 DOCKERFILE ] ──(docker build)──> [ 🧊 DOCKER IMAGE ]
+         │                                      │
+  Recipe Instructions                     Frozen Cake Batter
+         │                                      │
+         └───────────────────┐                  │ (docker run)
+                             ▼                  ▼
+                       [ ⚙️ DOCKER DAEMON ] ──> [ 📦 DOCKER CONTAINER ]
+                             ▲                  Fresh Baked Cake
+  [ 💻 DOCKER CLIENT ] ──────┘                  (Living Running App)
+    Waiter / POS Terminal                       
+    (Sends Orders / Commands)                   [ 🖥️ DOCKER HOST ]
+                                                The Restaurant Building
+  [ 🏪 DOCKER REGISTRY ] <──(push/pull)─────────┘
+    Supermarket / Cookbook App
+
+-----------------------------------------------------------------------------------
+🍴 Concept Breakdown : 
+📜 Dockerfile (The Written Recipe) - > Role: Plain-text step-by-step instructions.
+Summary: Tells Docker how to install dependencies and run your code.
+
+🧊 Docker Image (The Frozen Batter) - > Role: Read-only blueprint built from the Dockerfile.
+Summary: Stays frozen in storage—cannot be changed while running.
+
+📦 Docker Container (The Baked Cake) - > Role: A live, running app launched from an Image.
+Summary: You can start, stop, or throw it away without ruining the original Image.
+
+⚙️ Docker Daemon (The Head Chef) - > Role: Background service (dockerd) on the host server.
+Summary: Listens for commands and builds/runs all containers.
+
+💻 Docker Client (The Waiter) - > Role: Your terminal CLI where you type commands.
+Summary: Takes orders like docker run and hands them to the Daemon.
+
+🖥️ Docker Host (The Kitchen Building) - > Role: The physical machine or cloud VM (e.g., EC2).
+Summary: Provides the actual resources (CPU, RAM, Disk) for the Docker engine.
+
+🏪 Docker Registry / Hub (The Central Supermarket) - > Role: Public/private cloud library for images.
+Summary: Where you download pre-built bases (like Python, Node, or MySQL) instead of building from scratch.
+
+──────────────────────────────────────────────────────────────────────────────────────────
+=== 🛠️ WAYS TO CREATE / GET DOCKER IMAGES ===
+docker pull ubuntu                          📥 From Docker Hub: Pull an existing pre-built image directly from the registry
+docker commit my_container my_custom_image   📸 From Container: Create a new image from the changes made inside a running container
+docker build -t Dockerfile .              🏗️ From Dockerfile: Create a new image using the instructions written in a Dockerfile
+
+--------------------------------------------------------------------------------------------------------------
+🐳 Docker Command Cheat Sheet
+
+# === 🛠️ ENGINE & SERVICE CONTROL ===
+service docker start                        ▶️ Start Docker engine background service
+service docker stop                         ⏹️ Stop Docker engine background service
+service docker status                       🔍 Check if Docker background daemon service is running/active
+docker info                                 ℹ️ Display system-wide Docker setup details
+
+# === 📦 DOCKER HUB & REGISTRY ===
+docker search ubuntu                        🔍 Find public images on Docker Hub
+docker pull ubuntu:22.04                    📥 Download image from hub to local machine
+docker push username/app:1.0                📤 Upload local image to public/private registry
+
+# === 🚀 CONTAINER CREATION & RUNTIME ===
+docker run -it --name web ubuntu /bin/bash  🏁 Create & enter container with interactive terminal
+docker run -d -p 8080:80 --name web nginx   🌐 Run container in background with host port mapped
+docker exec -it web /bin/bash               🚪 Open interactive bash shell inside running container
+
+=== 📦 FROM CONTAINER (docker commit) Use to create image using container ===
+docker commit <container_id> newimagename   📸 Save a running container as a new image
+
+# === 🔍 MONITORING & AUDITING ===
+docker ps                                   🟢 List only currently active/running containers
+docker ps -a                                📋 List all containers including stopped and exited
+docker logs -f web                          📜 Stream live stdout logs from target container
+docker diff web                             🕵️ Show file modifications (A=Add/Append, C=Change, D=Delete)
+docker stats                                📊 View real-time CPU, RAM, and network usage
+
+# === 📁 FILES & VOLUMES ===
+docker cp app.conf web:/etc/nginx/          ↗️ Copy local file into container filesystem
+docker cp web:/var/log/nginx/access.log .   ↘️ Copy container file back to host machine
+docker run -v /host/dir:/container/dir app  💾 Mount host directory for persistent data
+
+# === 📝 DOCKERFILE & IMAGE BUILDING ===
+vi Dockerfile                               ✏️ Open editor to design image specifications
+docker build -t username/app:1.0 .          🏗️ Build custom image from current directory Dockerfile
+
+# === 🧹 LIFECYCLE & CLEANUP ===
+docker stop web                             ⏸️ Gracefully halt a running container
+docker start web                            ▶️ Resume execution of a stopped container
+docker attach web                           🔌 Connect terminal directly to running container process
+docker rm web                               🗑️ Delete a stopped container instance
+docker rm -f web                            💥 Forcefully kill and delete running container
+docker rmi ubuntu:22.04                     ❌ Delete local container image
+docker container prune -f                    🧹 Wipe all stopped containers & unused cache
+
+docker stop $(docker ps -q): Dynamically stops all running containers.
+
+docker start $(docker ps -a -q): Starts all containers (including stopped ones).
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+# === 📝 DOCKERFILE COMMANDS REFERENCE ===(Command should be used in capital)
+FROM ubuntu:22.04                           🏷️ Define base image layer to build upon
+RUN apt-get update && apt-get install -y py3⚙️ Execute build commands to install dependencies
+WORKDIR /app                                📂 Set internal working directory for commands
+COPY . /app                                 📥 Copy host files into container filesystem
+ADD archive.tar.gz /app                     📦 Copy host files AND auto-extract archives/URLs
+ENV APP_PORT=8080                           🌐 Set persistent environment variables inside
+EXPOSE 8080                                 🔌 Document container listening port for mapping
+VOLUME ["/app/data"]                        💾 Declare mount point for host storage binding
+USER appuser                                👤 Set non-root system user for execution safety
+CMD ["python3", "main.py"]                  🚀 Default executable command when container starts
+ENTRYPOINT ["python3"]                      🔒 Fixed executable base that accepts arguments
+
+📝 Example Dockerfile (vi Dockerfile)
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y python3
+WORKDIR /app
+COPY . /app
+ENV PORT=8080 (like a key,value pair)
+EXPOSE 8080
+CMD ["python3", "app.py"]
+
+F ➔ FROM       (Where do I start?)
+R ➔ RUN        (What do I install?)
+W ➔ WORKDIR    (Where do I stand?)
+C ➔ COPY       (What files do I bring in?)
+C ➔ CMD        (What do I run when powered on?)
+💡 CMD vs ENTRYPOINT Tip:
+CMD = Easily overridden when running docker run image <new_cmd>.
+ENTRYPOINT = Fixed baseline binary that treats docker run inputs as parameters(ENTRYPOINT has high priority then CMD)
+
+──────────────────────────────────────────────────────────────────────────────────────────
+
+# --- Dockerfile Configuration ---
+FROM amazonlinux                           📦 Set base operating system image
+RUN echo "I am linux Use" > /tmp/NewFile   📝 Create a file inside /tmp during build/creation
+WORKDIR /Folder1                           📂 Set working directory inside container
+VOLUME ["/volume_name"]                    💾 Declare anonymous volume mount point
+ENV myname="Shaik Mohammad Rafi"           🌐 Set persistent environment variable
+
+# --- Local Docker Images ---
+CLI CMD = docker images
+amazonlinux:latest    5b29412077a4    227MB    59.3MB    U    📦 Base Amazon Linux image used for container1, container2, and container4
+ubuntu:latest         3595d7fc4286    162MB    45.6MB    U    🐧 Base Ubuntu image used for container3
+
+# --- 1. Volume Creation via Dockerfile Setup ---
+docker build -t my-amazon-image .                                                    🛠️ Build custom image from Dockerfile & here (.) state as current directory
+docker run -it --name container1 my-amazon-image //bin/bash                          🚀 Run container using Dockerfile volume
+docker run -it --name container2 --privileged=true --volumes-from container1 amazonlinux:latest //bin/bash  🔗 Mount volumes from container1 into container2
+
+# --- 2. Container Management & Shell Attachment ---
+docker start container1                    ▶️ Start an existing stopped container
+docker attach container1                   🔌 Attach terminal input/output to running container/move me in container
+
+# --- 3. Volume Creation via CLI (-v and --volumes-from) ---
+docker run -it --name container3 -v /sharing_volume_name ubuntu //bin/bash         📦 Create container3 with CLI volume directory
+docker run -it --name container4 --privileged=true --volumes-from container3 amazonlinux //bin/bash  🔗 Mount volumes from container3 into container4
+
+# --- 4. Host to Container Mounting Examples ---
+WINDOWS / BASH               💻 docker run -it --name hostcon -v "C:/Users/Rafi/Videos/LinuxRunCLI_Dir:/hostdir" --privileged=true amazonlinux //bin//bash
+LINUX / EC2 INSTANCE         🐧 docker run -it --name hostcon -v "/home/ec2-user:/hostdir" --privileged=true amazonlinux //bin//bash
+
+Command meaning :
+DOCKER RUN                               🐳 Creating and starting a brand new container from an image
+INTERACTIVE TERMINAL (-it)               💻 Opening an interactive terminal session inside container
+CONTAINER NAME (--name hostcon)          🏷️ Assigning custom name 'hostcon' to the container
+VOLUME MOUNT (-v)                        📁 Sharing host directory with container's /hostdir path
+ROOT PRIVILEGES (--privileged=true)      ⚡ Giving container full access to host hardware/system
+IMAGE NAME (amazonlinux)                 📦 Using official Amazon Linux OS image from Docker Hub
+SHELL ENTRY (//bin//bash)                🚪 Launching Bash shell (double slashes prevent Git Bash path errors)
+
+# === 📁 DOCKER VOLUME MANAGEMENT ===
+docker volume create my_vol                             📦 Create a new persistent managed volume
+docker volume ls                                        📋 List all existing Docker volumes
+docker volume inspect my_vol                            🔍 Display detailed metadata & host storage path
+docker volume rm my_vol                                 🗑️ Delete a specific unused volume
+docker volume prune -f                                  🧹 Delete ALL unused volumes at once (-f = skip prompt)
+
+-----------------------------------------------------------------------
+
+# === 🚀 CREATING & RUNNING CONTAINERS WITH PORTS ===
+docker run -td --name techserver -p 80:80 ubuntu        🐳 Launch container detached (-d) with terminal (-t) & map host port 80 to container port 80
+docker run -td --name myjenkins -p 8080:8080 jenkins    ⚡ Launch Jenkins container detached with web UI mapped to host port 8080
+
+# === 🔌 INSPECTING PORTS & ACCESSING CONTAINER ===
+docker port techserver                                  🔍 Show public-to-private port mappings for container 'techserver'
+docker exec -it techserver //bin/bash                   🚪 Open interactive Bash shell inside running 'techserver' container
+
+# === 🌐 SETTING UP APACHE WEB SERVER INSIDE CONTAINER ===
+apt-get update                                          🔄 Refresh package index inside container
+apt-get install apache2 -y                              📦 Install Apache HTTP Web Server
+echo "Hello there" > /var/www/html/index.html           ✏️ Replace default home page with custom "Hello there" message
+
+-----------------------------------------------------------------------
+
+❓ EXPOSE vs. Port Mapping (-p) Difference ----
+EXPOSE (in Dockerfile)                        📝 DOCUMENTATION ONLY: Declares which ports the container listens on at runtime.
+                                              ⚠️ DOES NOT open ports to the outside world or host machine!
+
+PORT MAPPING (-p host:container)             🔌 ACTUAL NETWORK BINDING: Redirects traffic from host machine port to container port.
+                                              ✅ MAKES CONTAINER ACCESSIBLE via browser/network (e.g. http://localhost:80)!
+
+# Example comparison:
+EXPOSE 80                                     # Tells developers: "This image runs a service on port 80"
+docker run -p 8080:80 ubuntu                  # Actually forwards http://host-ip:8080 to container's port 80
+
+==============🏢 Imagine a Factory(Exec vs. Attach Difference) ==============
+Your Docker container is like a running factory:
+The main application (like Apache or Nginx) is the factory engine running inside.
+
+1️⃣ docker exec (Adding a New Guest Entrance 🚪) ------ docker exec -it techserver //bin/bash
+What happens: You step into the factory through a back door to look around or fix something.
+When you leave (exit): You just leave through the back door. The factory engine keeps running!
+Use case: Checking files, installing software, troubleshooting.
+
+2️⃣ docker attach (Grabbing the Factory Control Panel 🔌) ----- docker attach techserver
+What happens: You plug directly into the main factory engine switch.
+When you leave (exit): You shut off the main engine switch! The entire factory stops!
+Use case: Watching live logs directly from the main running app.
+
+-----------------------------------------------------------------------
+
+# === 📦 SAVING & PUBLISHING AN IMAGE TO DOCKER HUB ===
+docker commit mycontainer imagename                     💾 Save changes from a running container into a new image
+docker login                                            🔑 Sign in to your Docker Hub account
+docker tag myimage username/myimage:v1                  🏷️ Label local image with your Docker ID before pushing
+docker push username/myimage:v1                         📤 Upload tagged image to Docker Hub cloud
+
+# === 📥 DOWNLOADING & RUNNING ON ANOTHER PC ===
+docker pull username/myimage:v1                         📥 Download image from Docker Hub onto new machine
+docker run -it --name mycon username/myimage:v1 //bin/ba🚀 Launch new container from pulled image
+
+-----------------------------------------------------------------------
+# === 🧹 NUCLEAR CLEANUP (LOOPING / BULK DELETION) ===
+docker stop $(docker ps -a -q)                          🔄 Loop through all running containers and stop them
+docker rm $(docker ps -a -q)                            🔄 Loop through all stopped containers and delete them
+docker rmi -f $(docker images -q)                       🔄 Loop through all local images and force-delete them
+
+[ inner list generator ]
+docker stop $(docker ps -a -q)
+    │              │
+    └──────────────┴───► Equivalent to looping:
+                         for id in all_containers; do
+                             docker stop $id
+                         done
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
